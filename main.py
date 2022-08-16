@@ -293,7 +293,7 @@ def main_worker(gpu, args):
     train_transform = Compose(
         [
             LoadImaged(keys=["image"], reader=WSIReader, backend="cucim", dtype=np.uint8, level=1, image_only=True),
-            LabelEncodeIntegerGraded(keys=["label"], num_classes=args.num_classes),
+            # LabelEncodeIntegerGraded(keys=["label"], num_classes=args.num_classes),
             RandGridPatchd(
                 keys=["image"],
                 patch_size=(args.tile_size, args.tile_size),
@@ -313,7 +313,7 @@ def main_worker(gpu, args):
     valid_transform = Compose(
         [
             LoadImaged(keys=["image"], reader=WSIReader, backend="cucim", dtype=np.uint8, level=1, image_only=True),
-            LabelEncodeIntegerGraded(keys=["label"], num_classes=args.num_classes),
+            # LabelEncodeIntegerGraded(keys=["label"], num_classes=args.num_classes),
             GridPatchd(
                 keys=["image"],
                 patch_size=(args.tile_size, args.tile_size),
@@ -483,11 +483,11 @@ def parse_args():
 
     parser = argparse.ArgumentParser(description="Multiple Instance Learning (MIL) example of classification from WSI.")
     parser.add_argument(
-        "--data_root", default="/nfs/thena/shared/PandaChallenge2020/train_images/", help="path to root folder of images"
+        "--data_root", default="", help="path to root folder of images"
     )
-    parser.add_argument("--dataset_json", default='/nfs/thena/shared/PandaChallenge2020/datalist_panda_0.json', type=str, help="path to dataset json file")
+    parser.add_argument("--dataset_json", default='/workspace/pathology_mil/lymph.json', type=str, help="path to dataset json file")
 
-    parser.add_argument("--num_classes", default=2, type=int, help="number of output classes")
+    parser.add_argument("--num_classes", default=1, type=int, help="number of output classes")
     parser.add_argument("--mil_mode", default="att_trans", help="MIL algorithm")
     parser.add_argument(
         "--tile_count", default=44, type=int, help="number of patches (instances) to extract from WSI image"
