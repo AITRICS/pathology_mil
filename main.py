@@ -64,6 +64,7 @@ def train_epoch(model, loader, optimizer, scaler, epoch, args):
 
         optimizer.zero_grad(set_to_none=True)
 
+
         with autocast(enabled=args.amp):
             logits = model(data)
             loss = criterion(logits, target)
@@ -292,8 +293,8 @@ def main_worker(gpu, args):
 
     train_transform = Compose(
         [
-            LoadImaged(keys=["image"], reader=WSIReader, backend="cucim", dtype=np.uint8, level=1, image_only=True),
-            # LabelEncodeIntegerGraded(keys=["label"], num_classes=args.num_classes),
+            LoadImaged(keys=["image"], reader=WSIReader, backend="openslide", dtype=np.uint8, level=1, image_only=True),
+            LabelEncodeIntegerGraded(keys=["label"], num_classes=args.num_classes),
             RandGridPatchd(
                 keys=["image"],
                 patch_size=(args.tile_size, args.tile_size),
@@ -312,8 +313,8 @@ def main_worker(gpu, args):
 
     valid_transform = Compose(
         [
-            LoadImaged(keys=["image"], reader=WSIReader, backend="cucim", dtype=np.uint8, level=1, image_only=True),
-            # LabelEncodeIntegerGraded(keys=["label"], num_classes=args.num_classes),
+            LoadImaged(keys=["image"], reader=WSIReader, backend="openslide", dtype=np.uint8, level=1, image_only=True),
+            LabelEncodeIntegerGraded(keys=["label"], num_classes=args.num_classes),
             GridPatchd(
                 keys=["image"],
                 patch_size=(args.tile_size, args.tile_size),

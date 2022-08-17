@@ -1,22 +1,12 @@
 import os, argparse, json, random
 import pandas as pd
 import numpy as np
+from openslide import OpenSlide
 
 def print_config(config):
     print("="*20, "Configuration", "="*20)
     print(config)
     print("="*55)
-
-# def make_preset_data():
-#     data = {}
-#     data['image'] = None
-#     data['DBExist'] = False
-#     data['WSIExist'] = False
-#     data['xmlExist'] = False
-#     data['CNBDiagnosis'] = None
-#     data['DiagnosisConfirmed'] = None
-#     data['Annotations'] = None
-#     return data
 
 def make_meta_data(config):
     """
@@ -48,12 +38,17 @@ def make_meta_data(config):
 
             # ignore if name doesn't exist in 이전파일명 and CODiPAI ID columns both
             if db_index == None:
-                print(f"{os.path.join(root, file)}")
+                print(f"{os.path.join(root, file)} doesn't exist in 이전파일명 and CODiPAI ID colums both")
                 continue
 
-            if pd.isna(df['Lymph_node_metastasis_Yes_vs_No'].iloc[db_index]): continue # ignore files don't have lymph metastasis info
+            # ignore files don't have lymph metastasis info
+            if pd.isna(df['Lymph_node_metastasis_Yes_vs_No'].iloc[db_index]): continue 
 
             image_path = os.path.join(root, file)
+
+            # ignore if it isn't work to open WSI image by openslide
+            if not check_openslide_compatibility(image_path): continue
+
             lymph_metastasis = 1 if df['Lymph_node_metastasis_Yes_vs_No'].iloc[db_index] == "Yes" else 0
             meta_data.append({'image':image_path, 'label':lymph_metastasis})
                    
@@ -96,6 +91,21 @@ def split(config, meta_data):
     print(f"{len(meta_split_dict['training'])} training set")
     print(f"{len(meta_split_dict['validation'])} validation set")
     return meta_split_dict
+
+def check_openslide_compatibility(path):
+    """
+    openslide cannot open Hamamatsu ndpi WSIs bigger than 6GB so need to be filtered
+    Args)
+        path: WSI path
+    Return)
+        If file can be opened, return True. else, return False        
+    """
+    try:
+        OpenSlide(path)
+        return True
+    except:
+        print(f"{path} cannot open by OpenSlide")
+        return False
 
 def main(config):
     print_config(config)
