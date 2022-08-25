@@ -72,8 +72,8 @@ def train_epoch(model, loader, optimizer, scaler, epoch, args):
 
         data, target = batch_data["image"].cuda(args.rank), batch_data["label"].cuda(args.rank)
 
-        path = batch_data["path"][0]
-        print(f'idx: {idx}, filename: {os.path.basename(path)}, size: {convert_size(os.path.getsize(path))}, shape: {data.shape}')
+        # path = batch_data["path"][0]
+        # print(f'idx: {idx}, filename: {os.path.basename(path)}, size: {convert_size(os.path.getsize(path))}, shape: {data.shape}')
 
         optimizer.zero_grad(set_to_none=True)
 
@@ -136,8 +136,8 @@ def val_epoch(model, loader, epoch, args, max_tiles=None):
 
             data, target = batch_data["image"].cuda(args.rank), batch_data["label"].cuda(args.rank)
             
-            path = batch_data["path"][0]
-            print(f'idx: {idx}, filename: {os.path.basename(path)}, size: {convert_size(os.path.getsize(path))}, shape: {data.shape}')
+            # path = batch_data["path"][0]
+            # print(f'idx: {idx}, filename: {os.path.basename(path)}, size: {convert_size(os.path.getsize(path))}, shape: {data.shape}')
 
             with autocast(enabled=args.amp):
 
@@ -331,10 +331,19 @@ def main_worker(gpu, args):
         [
             LoadImaged(keys=["image"], reader=WSIReader, backend="openslide", dtype=np.uint8, level=1, image_only=True),
             LabelEncodeIntegerGraded(keys=["label"], num_classes=args.num_classes),
-            GridPatchd(
+            # GridPatchd(
+            #     keys=["image"],
+            #     patch_size=(args.tile_size, args.tile_size),
+            #     threshold=0.999 * 3 * 255 * args.tile_size * args.tile_size,
+            #     pad_mode=None,
+            #     constant_values=255,
+            # ),
+            RandGridPatchd(
                 keys=["image"],
                 patch_size=(args.tile_size, args.tile_size),
                 threshold=0.999 * 3 * 255 * args.tile_size * args.tile_size,
+                num_patches=args.tile_count,
+                sort_fn="min",
                 pad_mode=None,
                 constant_values=255,
             ),
