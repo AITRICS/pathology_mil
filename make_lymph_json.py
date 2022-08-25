@@ -50,7 +50,7 @@ def make_meta_data(config):
             if not check_openslide_compatibility(image_path): continue
 
             lymph_metastasis = 1 if df['Lymph_node_metastasis_Yes_vs_No'].iloc[db_index] == "Yes" else 0
-            meta_data.append({'image':image_path, 'label':lymph_metastasis})
+            meta_data.append({'image':image_path, 'label':lymph_metastasis, 'path':image_path})
                    
     metastasis_num = 0
     not_metastasis_num = 0

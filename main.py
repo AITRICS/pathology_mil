@@ -45,6 +45,16 @@ from torch.utils.data.dataloader import default_collate
 from torch.utils.data.distributed import DistributedSampler
 from torch.utils.tensorboard import SummaryWriter
 
+import math
+
+def convert_size(size_bytes):
+    if size_bytes == 0:
+        return "0B"
+    size_name = ("B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB")
+    i = int(math.floor(math.log(size_bytes, 1024)))
+    p = math.pow(1024, i)
+    s = round(size_bytes / p, 2)
+    return "%s %s" % (s, size_name[i])
 
 def train_epoch(model, loader, optimizer, scaler, epoch, args):
     """One train epoch over the dataset"""
@@ -61,6 +71,9 @@ def train_epoch(model, loader, optimizer, scaler, epoch, args):
     for idx, batch_data in enumerate(loader):
 
         data, target = batch_data["image"].cuda(args.rank), batch_data["label"].cuda(args.rank)
+
+        # path = batch_data["path"][0]
+        # print(f'idx: {idx}, filename: {os.path.basename(path)}, size: {convert_size(os.path.getsize(path))}, shape: {data.shape}')
 
         optimizer.zero_grad(set_to_none=True)
 
@@ -122,6 +135,9 @@ def val_epoch(model, loader, epoch, args, max_tiles=None):
         for idx, batch_data in enumerate(loader):
 
             data, target = batch_data["image"].cuda(args.rank), batch_data["label"].cuda(args.rank)
+            
+            # path = batch_data["path"][0]
+            # print(f'idx: {idx}, filename: {os.path.basename(path)}, size: {convert_size(os.path.getsize(path))}, shape: {data.shape}')
 
             with autocast(enabled=args.amp):
 
@@ -315,10 +331,19 @@ def main_worker(gpu, args):
         [
             LoadImaged(keys=["image"], reader=WSIReader, backend="openslide", dtype=np.uint8, level=1, image_only=True),
             LabelEncodeIntegerGraded(keys=["label"], num_classes=args.num_classes),
-            GridPatchd(
+            # GridPatchd(
+            #     keys=["image"],
+            #     patch_size=(args.tile_size, args.tile_size),
+            #     threshold=0.999 * 3 * 255 * args.tile_size * args.tile_size,
+            #     pad_mode=None,
+            #     constant_values=255,
+            # ),
+            RandGridPatchd(
                 keys=["image"],
                 patch_size=(args.tile_size, args.tile_size),
                 threshold=0.999 * 3 * 255 * args.tile_size * args.tile_size,
+                num_patches=args.tile_count,
+                sort_fn="min",
                 pad_mode=None,
                 constant_values=255,
             ),
@@ -336,7 +361,8 @@ def main_worker(gpu, args):
     train_loader = torch.utils.data.DataLoader(
         dataset_train,
         batch_size=args.batch_size,
-        shuffle=(train_sampler is None),
+        # shuffle=(train_sampler is None),
+        shuffle=False,
         num_workers=args.workers,
         pin_memory=True,
         multiprocessing_context="spawn",
@@ -426,15 +452,15 @@ def main_worker(gpu, args):
         print(args.rank, time.ctime(), "Epoch:", epoch)
 
         epoch_time = time.time()
-        train_loss, train_acc = train_epoch(model, train_loader, optimizer, scaler=scaler, epoch=epoch, args=args)
+        # train_loss, train_acc = train_epoch(model, train_loader, optimizer, scaler=scaler, epoch=epoch, args=args)
 
-        if args.rank == 0:
-            print(
-                "Final training  {}/{}".format(epoch, n_epochs - 1),
-                "loss: {:.4f}".format(train_loss),
-                "acc: {:.4f}".format(train_acc),
-                "time {:.2f}s".format(time.time() - epoch_time),
-            )
+        # if args.rank == 0:
+        #     print(
+        #         "Final training  {}/{}".format(epoch, n_epochs - 1),
+        #         "loss: {:.4f}".format(train_loss),
+        #         "acc: {:.4f}".format(train_acc),
+        #         "time {:.2f}s".format(time.time() - epoch_time),
+        #     )
 
         if args.rank == 0 and writer is not None:
             writer.add_scalar("train_loss", train_loss, epoch)
@@ -505,7 +531,7 @@ def parse_args():
     parser.add_argument("--logdir", default=None, help="path to log directory to store Tensorboard logs")
 
     parser.add_argument("--epochs", default=50, type=int, help="number of training epochs")
-    parser.add_argument("--batch_size", default=4, type=int, help="batch size, the number of WSI images per gpu")
+    parser.add_argument("--batch_size", default=8, type=int, help="batch size, the number of WSI images per gpu")
     parser.add_argument("--optim_lr", default=3e-5, type=float, help="initial learning rate")
 
     parser.add_argument("--weight_decay", default=0, type=float, help="optimizer weight decay")
