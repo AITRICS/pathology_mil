@@ -452,15 +452,15 @@ def main_worker(gpu, args):
         print(args.rank, time.ctime(), "Epoch:", epoch)
 
         epoch_time = time.time()
-        # train_loss, train_acc = train_epoch(model, train_loader, optimizer, scaler=scaler, epoch=epoch, args=args)
+        train_loss, train_acc = train_epoch(model, train_loader, optimizer, scaler=scaler, epoch=epoch, args=args)
 
-        # if args.rank == 0:
-        #     print(
-        #         "Final training  {}/{}".format(epoch, n_epochs - 1),
-        #         "loss: {:.4f}".format(train_loss),
-        #         "acc: {:.4f}".format(train_acc),
-        #         "time {:.2f}s".format(time.time() - epoch_time),
-        #     )
+        if args.rank == 0:
+            print(
+                "Final training  {}/{}".format(epoch, n_epochs - 1),
+                "loss: {:.4f}".format(train_loss),
+                "acc: {:.4f}".format(train_acc),
+                "time {:.2f}s".format(time.time() - epoch_time),
+            )
 
         if args.rank == 0 and writer is not None:
             writer.add_scalar("train_loss", train_loss, epoch)
