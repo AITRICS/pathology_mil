@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 
 
-class Aggregator(nn.Module):
+class MilBase(nn.Module):
 
     def __init__(self, encoder = nn.Identity(), dim_in:int=2048, dim_latent: int= 512, pool = nn.AdaptiveMaxPool1d((1))):
         super().__init__()
@@ -18,3 +18,11 @@ class Aggregator(nn.Module):
         x = self.score(x)
         x = self.pool(x)
         return x
+
+# class MilMax(MilBase):
+
+#     def __init__(self, **kwargs):
+#         super().__init__(**kwargs)
+    
+#     def forward(, x: torch.Tensor):
+        

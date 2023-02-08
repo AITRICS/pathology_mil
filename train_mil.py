@@ -29,7 +29,7 @@ model_names = sorted(name for name in models.__dict__
     and callable(models.__dict__[name]))
 
 parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
-parser.add_argument('--data', default='/mnt/aitrics_ext/ext01/shared/camelyon', help='path to dataset')
+parser.add_argument('--data', default='/nfs/thena/shared/pathology_mil/features/CAMELYON16/simclr_lr1/train', help='path to dataset')
 parser.add_argument('--fold', default=5, help='number of fold for cross validation')
 # parser.add_argument('-a', '--arch', metavar='ARCH', default='resnet50', choices=model_names, help='default: resnet50')
 parser.add_argument('-j', '--workers', default=4, type=int, metavar='N', help='number of data loading workers (default: 4)')
@@ -59,6 +59,7 @@ def run_fold(args, fold) -> Tuple:
     torch.backends.cudnn.benchmark = True
     # cudnn.deterministic = True
 
+    # 
     model = Aggregator().cuda() 
 
     if args.loss == 'ce':
