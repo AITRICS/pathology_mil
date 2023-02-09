@@ -14,13 +14,13 @@ class MilBase(nn.Module):
         
         x = self.encoder(x)
 
-        # x --> N x dim_in
+        # x --> #slide x #patches x dim_in
         x = self.score(x)
 
-        # x --> N x dim_out
-        x = self.pool(x.T).squeeze(1)
+        # x --> #slide x #patches x dim_out
+        x = self.pool(torch.transpose(x,1,2)).squeeze(2)
 
-        # x --> dim_out
+        # x --> #slide x dim_out
         return x
 
 # class MilMax(MilBase):

@@ -11,43 +11,68 @@ import glob
 
 class Dataset_pkl(Dataset):
     
-    def __init__(self, path_pkl_root: str, fold_now:int, fold_all:int=5, shuffle_slide: bool=True, shuffle_patch: bool=True, if_train: bool=True, seed:int=1):
+    def __init__(self, path_fold_pkl: str, path_pretrained_pkl_root: str, fold_now:int, fold_all:int=5, shuffle_slide: bool=True, shuffle_patch: bool=True, split: str='train', num_classes: int=1, seed:int=1):
+        """
+        path_fold_pkl: path before fold{FOLD_NUMBER}.pkl
+        path_pretrained_pkl_root: path before train/test
+        """
         super().__init__()        
         assert (fold_now > 0) and (fold_now <= fold_all)
+        self.path_pretrained_pkl_root = path_pretrained_pkl_root
         self.shuffle_patch = shuffle_patch
+        self.split = split
         self.seed = seed
 
         self.rd = random.Random(seed)
-        self.path_pkl = []
 
+        #  Normal must be 0
         print(f'=== Category Indexing ===')
         self.category_idx = {}
-        for i, _category in enumerate(os.listdir(os.path.join(path_pkl_root, 'fold1'))):
-            self.category_idx[_category] = i
+        for i, _category in enumerate(os.listdir(os.path.join(path_pretrained_pkl_root, 'train' if (split=='train' or split=='val') else 'test'))):
+            if num_classes > 1:
+                _temp = np.zeros(num_classes)
+                _temp[i] = 1
+                self.category_idx[_category] = _temp
+            else:
+                _temp = np.zeros(1)
+                _temp[0] = i
+                self.category_idx[_category] = _temp
+                # self.category_idx[_category] = i
             print(f'{_category} ===> {i}')
         print(f'=========================')
 
         folds = list(range(1, fold_all+1))
         # patient_list = self.rd.shuffle(patient_list)
 
-        if if_train:
+        if split == 'train':
+            self.path_pretrained_pkl = os.path.join(path_pretrained_pkl_root, 'train')
+            self.path_pkl = []
             folds.pop(fold_now-1)
             for i in folds:
-                self.path_pkl.extend(glob.glob(os.path.join(path_root, f'fold{i}','*.pkl')))
-        else:
-            self.path_pkl = glob.glob(os.path.join(path_root, f'fold{fold_now}','*.pkl'))
+                self.path_pkl.extend(pickle.load(open(os.path.join(path_fold_pkl, f'fold{i}.pkl'), 'rb')))
+        elif split == 'val':
+            self.path_pretrained_pkl = os.path.join(path_pretrained_pkl_root, 'train')
+            self.path_pkl = pickle.load(open(os.path.join(path_fold_pkl, f'fold{fold_now}.pkl'), 'rb'))
+        elif split == 'test':
+            self.path_pretrained_pkl = os.path.join(path_pretrained_pkl_root, 'train')
+            self.path_pkl = glob.glob(os.path.join(path_pretrained_pkl_root, f'test','*.pkl'))
+            self.path_pkl.sort()
         
         if shuffle_slide:
-            self.path_pkl = self.rd.shuffle(self.path_pkl)        
+            self.rd.shuffle(self.path_pkl)        
 
     def __len__(self):
         return len(self.path_pkl)
 
     def __getitem__(self, idx):
-        _data = pickle.load(open(self.path_pkl(idx), 'rb'))
+        if (self.split == 'train' or self.split == 'val'):
+            _data = pickle.load(open(os.path.join(self.path_pretrained_pkl, f'{self.path_pkl[idx]}.pkl'), 'rb'))
+        elif self.split == 'test':
+            _data = pickle.load(open(self.path_pkl[idx], 'rb'))
+
         _data_temp = [feat['feature'] for feat in _data['features']]
         if self.shuffle_patch:
-            _data_temp = self.rd.shuffle(_data_temp)
+            self.rd.shuffle(_data_temp)
         return torch.from_numpy(np.stack(_data_temp, axis=0)), self.category_idx[_data['label']]
         
 

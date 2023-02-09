@@ -20,7 +20,7 @@ import torchvision.transforms as transforms
 from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import Subset
 from typing import Tuple
-from utils import AverageMeter, adjust_learning_rate, loss, Dataset_pkl, CosineAnnealingWarmUpSingle, optimal_thresh, five_scores, multi_label_roc, save_checkpoint
+from utils import adjust_learning_rate, loss, Dataset_pkl, CosineAnnealingWarmUpSingle, optimal_thresh, five_scores, multi_label_roc, save_checkpoint
 import models as milmodels
 from tqdm import tqdm, trange
 import numpy as np
@@ -28,13 +28,14 @@ import numpy as np
 model_names = sorted(name for name in models.__dict__
     if name.islower() and not name.startswith("__")
     and callable(models.__dict__[name]))
-
+# /nfs/strange/shared/hazel/stad_simclr_lr1/train
 parser = argparse.ArgumentParser(description='MIL Training')
-parser.add_argument('--data-root', default='/nfs/thena/shared/pathology_mil/cv', help='path to dataset')
+parser.add_argument('--pkl-root', default='/nfs/strange/shared/hazel/stad_cv', help='path to pkls')
+parser.add_argument('--data-root', default='/nfs/strange/shared/hazel/stad_simclr_lr1', help='path to dataset')
 parser.add_argument('--dataset', default='CAMELYON16', choices=['CAMELYON16', 'tcga_lung', 'tcga_stad'], type=str, help='dataset type')
 parser.add_argument('--weight', default='simclr_lr1', help='weight folder')
 parser.add_argument('--fold', default=5, help='number of fold for cross validation')
-parser.add_argument('-j', '--workers', default=4, type=int, metavar='N', help='number of data loading workers (default: 4)')
+parser.add_argument('-j', '--workers', default=1, type=int, metavar='N', help='number of data loading workers (default: 1)')
 parser.add_argument('--epochs', default=50, type=int, metavar='N', help='number of total epochs to run')
 parser.add_argument('--optimizer', default='adam', choices=['adam', 'sgd'], type=str, help='optimizer')
 parser.add_argument('--loss', default='bce', choices=['bce'], type=str, help='loss function')
@@ -48,7 +49,6 @@ parser.add_argument('-e', '--evaluate', dest='evaluate', action='store_true', he
 parser.add_argument('--mil-model', default='MilBase', choices=['MilBase'], type=str, help='use pre-training method')
 parser.add_argument('--seed', default=1, type=int, help='seed for initializing training. ')
 
-
 def run_fold(args, fold) -> Tuple:
 
     random.seed(args.seed)
@@ -57,8 +57,9 @@ def run_fold(args, fold) -> Tuple:
     torch.backends.cudnn.benchmark = True
     # cudnn.deterministic = True
     device = 0
+    num_classes=2 if args.dataset=='tcga_lung' else 1
 
-    model = milmodels.__dict__[args.mil_model]().cuda() 
+    model = milmodels.__dict__[args.mil_model](dim_out=num_classes).cuda() 
 
     if args.loss == 'bce':
         criterion = nn.BCEWithLogitsLoss().cuda()
@@ -70,20 +71,25 @@ def run_fold(args, fold) -> Tuple:
     else:
         raise ValueError(f'Undefined Optimizer!!')
     
-    # 고쳐야 함
-    scheduler = CosineAnnealingWarmUpSingle(optimizer, max_lr=args.lr, epochs=args.epochs, steps_per_epoch=len(loader_train), cycle_momentum=args.if_momentum_scheduler)
-    dataset_train = Dataset_pkl(path_pkl_root=os.path.join(args.data_root, args.dataset, f'fold{fold}.pkl'), fold_now=fold, fold_all=args.fold, shuffle_slide=True, shuffle_patch=True, if_train=True, seed=args.seed)
+    # dataset_train = Dataset_pkl(path_pkl_root=os.path.join(args.data_root, args.dataset, f'fold{fold}.pkl'), fold_now=fold, fold_all=args.fold, shuffle_slide=True, shuffle_patch=True, if_train=True, seed=args.seed)
+    # dataset_train = Dataset_pkl(path_fold_pkl=os.path.join(args.pkl_root), path_pretrained_pkl_root='/nfs/strange/shared/hazel/stad_simclr_lr1', fold_now=fold, fold_all=args.fold, shuffle_slide=True, shuffle_patch=True, split='train', num_classes=num_classes, seed=args.seed)
+    dataset_train = Dataset_pkl(path_fold_pkl=os.path.join(args.pkl_root), path_pretrained_pkl_root=args.data_root, fold_now=fold, fold_all=args.fold, shuffle_slide=True, shuffle_patch=True, split='train', num_classes=num_classes, seed=args.seed)
     loader_train = torch.utils.data.DataLoader(dataset_train, batch_size=args.batch_size, shuffle=True, num_workers=args.workers, pin_memory=True)
+    
+    dataset_val = Dataset_pkl(path_fold_pkl=os.path.join(args.pkl_root), path_pretrained_pkl_root=args.data_root, fold_now=fold, fold_all=args.fold, shuffle_slide=False, shuffle_patch=False, split='val', num_classes=num_classes, seed=args.seed)
+    loader_val = torch.utils.data.DataLoader(dataset_val, batch_size=args.batch_size, shuffle=False, num_workers=args.workers, pin_memory=True)
+
+    # 고쳐야 함
+    scheduler = CosineAnnealingWarmUpSingle(optimizer, max_lr=args.lr, epochs=args.epochs, steps_per_epoch=len(loader_train))
     scaler = torch.cuda.amp.GradScaler()
 
-    for epoch in trange(args.start_epoch, args.epochs):        
-        train(loader_train, model, criterion, optimizer, epoch, device, scheduler, scaler, args)
-    acc, auc = validate(loader_train, model, criterion, args)
+    for epoch in trange(1, args.epochs):        
+        train(loader_train, model, criterion, optimizer, device, scheduler, scaler)
+    acc, auc = validate(loader_val, model, criterion, device, args)
     
     return acc, auc
 
-
-def train(train_loader, model, criterion, optimizer, epoch, device, scheduler, scaler):
+def train(train_loader, model, criterion, optimizer, device, scheduler, scaler):
     model.train()
     for i, (images, target) in enumerate(train_loader):
         images = images.to(device, non_blocking=True)
@@ -106,18 +112,21 @@ def validate(val_loader, model, criterion, device, args):
     model.eval()
     with torch.no_grad():
         for i, (images, target) in enumerate(val_loader):
-            bag_labels.append(target)
+            bag_labels.append(target.squeeze(0).numpy())
             images = images.cuda(device, non_blocking=True)
             
             with torch.cuda.amp.autocast():
                 # compute output
                 output = model(images)
-                loss = criterion(output, target.cuda(device, non_blocking=True))
-            bag_predictions.append(torch.sigmoid(output).cpu().squeeze().numpy())
+                # loss = criterion(output, target.cuda(device, non_blocking=True))
+            # bag_predictions.append(torch.sigmoid(output).cpu().squeeze().numpy())
+            bag_predictions.append(torch.sigmoid(output.type(torch.DoubleTensor)).squeeze(0).cpu().numpy())
         
         if args.dataset == 'tcga_lung':
-            auc, _, thresholds_optimal = multi_label_roc(np.array(bag_labels), np.array(bag_predictions), num_classes=2, pos_label=1)
-            acc = float(torch.tensor(bag_labels).eq(torch.tensor(bag_predictions)).sum().item())/len(val_loader)
+            bag_labels = np.array(bag_labels)
+            bag_predictions = np.array(bag_predictions)
+            auc, _, thresholds_optimal = multi_label_roc(bag_labels, bag_predictions, num_classes=2, pos_label=1)
+            acc = float(torch.tensor(bag_labels).eq(torch.tensor(bag_predictions)).sum().item())/float(torch.tensor(bag_labels).numel())
         else:
             acc, auc, precision, recall, fscore = five_scores(bag_labels, bag_predictions)
 
