@@ -1,100 +1,42 @@
 import torch
 import torch.distributed as dist
 from enum import Enum
+from sklearn.metrics import roc_curve, roc_auc_score, precision_recall_fscore_support
+import numpy as np
 
+# 
+def optimal_thresh(fpr, tpr, thresholds, p=0):
+    loss = (fpr - tpr) - p * tpr / (fpr + tpr + 1)
+    idx = np.argmin(loss, axis=0)
+    return fpr[idx], tpr[idx], thresholds[idx]
 
+def five_scores(bag_labels, bag_predictions):
+    fpr, tpr, threshold = roc_curve(bag_labels, bag_predictions, pos_label=1)
+    fpr_optimal, tpr_optimal, threshold_optimal = optimal_thresh(fpr, tpr, threshold)
+    auc_value = roc_auc_score(bag_labels, bag_predictions)
+    this_class_label = np.array(bag_predictions)
+    this_class_label[this_class_label>=threshold_optimal] = 1
+    this_class_label[this_class_label<threshold_optimal] = 0
+    bag_predictions = this_class_label
+    precision, recall, fscore, _ = precision_recall_fscore_support(bag_labels, bag_predictions, average='binary')
+    accuracy = 1- np.count_nonzero(np.array(bag_labels).astype(int)- bag_predictions.astype(int)) / len(bag_labels)
+    return accuracy, auc_value, precision, recall, fscore
 
-class Summary(Enum):
-    NONE = 0
-    AVERAGE = 1
-    SUM = 2
-    COUNT = 3
-
-class AverageMeter(object):
-    """Computes and stores the average and current value"""
-    def __init__(self, name, fmt=':f', summary_type=Summary.AVERAGE):
-        self.name = name
-        self.fmt = fmt
-        self.summary_type = summary_type
-        self.reset()
-
-    def reset(self):
-        self.val = 0
-        self.avg = 0
-        self.sum = 0
-        self.count = 0
-
-    def update(self, val, n=1):
-        self.val = val
-        self.sum += val * n
-        self.count += n
-        self.avg = self.sum / self.count
-
-    def all_reduce(self):
-        if torch.cuda.is_available():
-            device = torch.device("cuda")
-        elif torch.backends.mps.is_available():
-            device = torch.device("mps")
-        else:
-            device = torch.device("cpu")
-        total = torch.tensor([self.sum, self.count], dtype=torch.float32, device=device)
-        dist.all_reduce(total, dist.ReduceOp.SUM, async_op=False)
-        self.sum, self.count = total.tolist()
-        self.avg = self.sum / self.count
-
-    def __str__(self):
-        fmtstr = '{name} {val' + self.fmt + '} ({avg' + self.fmt + '})'
-        return fmtstr.format(**self.__dict__)
-    
-    def summary(self):
-        fmtstr = ''
-        if self.summary_type is Summary.NONE:
-            fmtstr = ''
-        elif self.summary_type is Summary.AVERAGE:
-            fmtstr = '{name} {avg:.3f}'
-        elif self.summary_type is Summary.SUM:
-            fmtstr = '{name} {sum:.3f}'
-        elif self.summary_type is Summary.COUNT:
-            fmtstr = '{name} {count:.3f}'
-        else:
-            raise ValueError('invalid summary type %r' % self.summary_type)
-        
-        return fmtstr.format(**self.__dict__)
-
-
-class ProgressMeter(object):
-    def __init__(self, num_batches, meters, prefix=""):
-        self.batch_fmtstr = self._get_batch_fmtstr(num_batches)
-        self.meters = meters
-        self.prefix = prefix
-
-    def display(self, batch):
-        entries = [self.prefix + self.batch_fmtstr.format(batch)]
-        entries += [str(meter) for meter in self.meters]
-        print('\t'.join(entries))
-        
-    def display_summary(self):
-        entries = [" *"]
-        entries += [meter.summary() for meter in self.meters]
-        print(' '.join(entries))
-
-    def _get_batch_fmtstr(self, num_batches):
-        num_digits = len(str(num_batches // 1))
-        fmt = '{:' + str(num_digits) + 'd}'
-        return '[' + fmt + '/' + fmt.format(num_batches) + ']'
-
-def accuracy(output, target, topk=(1,)):
-    """Computes the accuracy over the k top predictions for the specified values of k"""
-    with torch.no_grad():
-        maxk = max(topk)
-        batch_size = target.size(0)
-
-        _, pred = output.topk(maxk, 1, True, True)
-        pred = pred.t()
-        correct = pred.eq(target.view(1, -1).expand_as(pred))
-
-        res = []
-        for k in topk:
-            correct_k = correct[:k].reshape(-1).float().sum(0, keepdim=True)
-            res.append(correct_k.mul_(100.0 / batch_size))
-        return res
+def multi_label_roc(labels, predictions, num_classes, pos_label=1):
+    fprs = []
+    tprs = []
+    thresholds = []
+    thresholds_optimal = []
+    aucs = []
+    if len(predictions.shape)==1:
+        predictions = predictions[:, None]
+    for c in range(0, num_classes):
+        label = labels[:, c]
+        prediction = predictions[:, c]
+        fpr, tpr, threshold = roc_curve(label, prediction, pos_label=1)
+        fpr_optimal, tpr_optimal, threshold_optimal = optimal_thresh(fpr, tpr, threshold)
+        c_auc = roc_auc_score(label, prediction)
+        aucs.append(c_auc)
+        thresholds.append(threshold)
+        thresholds_optimal.append(threshold_optimal)
+    return aucs, thresholds, thresholds_optimal
