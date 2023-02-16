@@ -160,4 +160,4 @@ if __name__ == '__main__':
             for i, k in enumerate(category_idx.keys()):
                 f.write(f'AUC ({k}): {auc_fold[i]}\n')
         f.write(f'ACC: {sum(acc_fold)/float(len(acc_fold))}\n')
-        f.write(f'==========================================================================================\n')
+        f.write(f'==========================================================================================\n\n\n')

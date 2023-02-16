@@ -171,11 +171,11 @@ if __name__ == '__main__':
     auc_fold = np.mean(auc_fold, axis=0)
     
     with open(txt_name + '.txt', 'a' if os.path.isfile(txt_name + '.txt') else 'w') as f:
-        f.write(f'================== LR: {args.lr} || Optimizer: {args.optimizer} + SAM ====================')
+        f.write(f'================== LR: {args.lr} || Optimizer: {args.optimizer} + SAM ====================\n')
         if args.num_classes == 1:
-            f.write(f'AUC: {auc_fold[0]}')
+            f.write(f'AUC: {auc_fold[0]}\n')
         elif args.num_classes == 2:
             for i, k in enumerate(category_idx.keys()):
-                f.write(f'AUC ({k}): {auc_fold[i]}')
-        f.write(f'ACC: {sum(acc_fold)/float(len(acc_fold))}')
-        f.write(f'==========================================================================================')
+                f.write(f'AUC ({k}): {auc_fold[i]}\n')
+        f.write(f'ACC: {sum(acc_fold)/float(len(acc_fold))}\n')
+        f.write(f'==========================================================================================\n\n\n')
