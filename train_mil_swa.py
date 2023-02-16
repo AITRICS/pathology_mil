@@ -24,6 +24,7 @@ from utils import adjust_learning_rate, loss, Dataset_pkl, CosineAnnealingWarmUp
 import models as milmodels
 from tqdm import tqdm, trange
 import numpy as np
+from torch.optim.swa_utils import AveragedModel, SWALR
 
 model_names = sorted(name for name in models.__dict__
     if name.islower() and not name.startswith("__")
@@ -40,8 +41,8 @@ parser.add_argument('--seed', default=1, type=int, help='seed for initializing t
 
 parser.add_argument('--dataset', default='tcga_stad', choices=['CAMELYON16', 'tcga_lung', 'tcga_stad'], type=str, help='dataset type')
 parser.add_argument('--pretrain-type', default='simclr_lr1', help='weight folder')
-parser.add_argument('--epochs', default=10, type=int, metavar='N', help='number of total epochs to run')
-parser.add_argument('--optimizer', default='adamw', choices=['sgd', 'adam', 'adamw'], type=str, help='optimizer')
+parser.add_argument('--epochs', default=100, type=int, metavar='N', help='number of total epochs to run')
+parser.add_argument('--optimizer', default='sgd', choices=['sgd', 'adam', 'adamw'], type=str, help='optimizer')
 parser.add_argument('--lr', default=0.1, type=float, metavar='LR', help='initial learning rate', dest='lr')
 # DTFD: 1e-4, TransMIL: 1e-5
 parser.add_argument('--wd', '--weight-decay', default=1e-4, type=float, metavar='W', help='weight decay (default: 1e-4)', dest='weight_decay')
@@ -66,7 +67,11 @@ def run_fold(args, fold) -> Tuple:
         optimizer = torch.optim.SGD(model.parameters(), 0, momentum=args.momentum, weight_decay=args.weight_decay)
     elif args.optimizer == 'adamw':
         optimizer = torch.optim.AdamW(model.parameters(), 0, weight_decay=args.weight_decay)
-  
+        
+    swa_model = AveragedModel(model)
+    swa_scheduler = SWALR(optimizer, swa_lr=args.lr, anneal_epochs=10, anneal_strategy='cos')
+    swa_start = int(args.epochs*0.75)
+
     dataset_train = Dataset_pkl(path_fold_pkl=os.path.join(args.data_root, 'cv', args.dataset), path_pretrained_pkl_root=os.path.join(args.data_root, 'features', args.dataset, args.pretrain_type), fold_now=fold, fold_all=args.fold, shuffle_slide=True, shuffle_patch=True, split='train', num_classes=args.num_classes, seed=args.seed)
     loader_train = torch.utils.data.DataLoader(dataset_train, batch_size=args.batch_size, shuffle=True, num_workers=args.workers, pin_memory=True)
     
@@ -78,12 +83,12 @@ def run_fold(args, fold) -> Tuple:
     scaler = torch.cuda.amp.GradScaler()
 
     for epoch in trange(1, args.epochs):        
-        train(loader_train, model, criterion, optimizer, scheduler, scaler)
+        train(loader_train, model, criterion, optimizer, scheduler, scaler, epoch>swa_start, swa_model, swa_scheduler)
     auc, acc = validate(loader_val, model, criterion, args)
     
     return auc, acc, dataset_val.category_idx
 
-def train(train_loader, model, criterion, optimizer, scheduler, scaler):
+def train(train_loader, model, criterion, optimizer, scheduler, scaler, if_swa, swa_model, swa_scheduler):
     model.train()
     for i, (images, target) in enumerate(train_loader):
         # images --> #bags x #instances x #dims
@@ -99,7 +104,12 @@ def train(train_loader, model, criterion, optimizer, scheduler, scaler):
         scaler.scale(loss).backward()
         scaler.step(optimizer)
         scaler.update()
-        scheduler.step()
+
+        if if_swa:
+            swa_model.update_parameters(model)
+            swa_scheduler.step()
+        else:
+            scheduler.step()
 
 def validate(val_loader, model, criterion, args):
     bag_labels = []
@@ -153,11 +163,11 @@ if __name__ == '__main__':
     auc_fold = np.mean(auc_fold, axis=0)
     
     with open(txt_name + '.txt', 'a' if os.path.isfile(txt_name + '.txt') else 'w') as f:
-        f.write(f'===================== LR: {args.lr} || Optimizer: {args.optimizer} =======================\n')
+        f.write(f'================== LR: {args.lr} || Optimizer: {args.optimizer} + SWA ====================')
         if args.num_classes == 1:
-            f.write(f'AUC: {auc_fold[0]}\n')
+            f.write(f'AUC: {auc_fold[0]}')
         elif args.num_classes == 2:
             for i, k in enumerate(category_idx.keys()):
-                f.write(f'AUC ({k}): {auc_fold[i]}\n')
-        f.write(f'ACC: {sum(acc_fold)/float(len(acc_fold))}\n')
-        f.write(f'==========================================================================================\n')
+                f.write(f'AUC ({k}): {auc_fold[i]}')
+        f.write(f'ACC: {sum(acc_fold)/float(len(acc_fold))}')
+        f.write(f'==========================================================================================')

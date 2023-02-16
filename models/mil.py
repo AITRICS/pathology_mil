@@ -4,11 +4,20 @@ import torch.nn as nn
 
 class MilBase(nn.Module):
 
-    def __init__(self, encoder = nn.Identity(), dim_in:int=2048, dim_latent: int= 512, dim_out = 1, pool = nn.AdaptiveMaxPool1d((1))):
+    def __init__(self, encoder=None, dim_in:int=2048, dim_latent: int= 512, dim_out = 1, pool = nn.AdaptiveMaxPool1d((1))):
         super().__init__()
-        self.encoder = encoder
+
+        if encoder == None:
+            self.encoder = nn.Sequential(
+                nn.Linear(dim_in, dim_latent),
+                nn.LayerNorm(dim_latent),
+                nn.ReLU(),
+            )
+        else:
+            self.encoder = encoder
+
         self.pool = pool
-        self.score = nn.Linear(dim_in, dim_out, bias=True)
+        self.score = nn.Linear(dim_latent, dim_out, bias=True)
     
     def forward(self, x: torch.Tensor):
         

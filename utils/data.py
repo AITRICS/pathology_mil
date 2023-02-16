@@ -28,17 +28,29 @@ class Dataset_pkl(Dataset):
         #  Normal must be 0
         print(f'=== Category Indexing ===')
         self.category_idx = {}
-        for i, _category in enumerate(os.listdir(os.path.join(path_pretrained_pkl_root, 'train' if (split=='train' or split=='val') else 'test'))):
-            if num_classes > 1:
-                _temp = np.zeros(num_classes)
-                _temp[i] = 1
-                self.category_idx[_category] = _temp
-            else:
-                _temp = np.zeros(1)
-                _temp[0] = i
-                self.category_idx[_category] = _temp
-                # self.category_idx[_category] = i
-            print(f'{_category} ===> {i}')
+        if 'normal' in os.listdir(os.path.join(path_pretrained_pkl_root, 'train' if (split=='train' or split=='val') else 'test')):
+            assert num_classes == 1
+            self.category_idx['normal'] = np.zeros(1)
+            _list_category = os.listdir(os.path.join(path_pretrained_pkl_root, 'train' if (split=='train' or split=='val') else 'test'))
+            _list_category.remove('normal')
+            assert len(_list_category) == 1
+            self.category_idx[_list_category[0]] = np.ones(1)
+            
+        else:
+            _categories = os.listdir(os.path.join(path_pretrained_pkl_root, 'train' if (split=='train' or split=='val') else 'test'))
+            _categories.sort()
+            for i, _category in enumerate(_categories):
+                if num_classes > 1:
+                    _temp = np.zeros(num_classes)
+                    _temp[i] = 1
+                    self.category_idx[_category] = _temp
+                else:
+                    _temp = np.zeros(1)
+                    _temp[0] = i
+                    self.category_idx[_category] = _temp
+                    # self.category_idx[_category] = i
+        for k, v in self.category_idx.items():
+            print(f'{k} ===> {v}')
         print(f'=========================')
 
         folds = list(range(1, fold_all+1))
@@ -54,7 +66,7 @@ class Dataset_pkl(Dataset):
             self.path_pretrained_pkl = os.path.join(path_pretrained_pkl_root, 'train')
             self.path_pkl = pickle.load(open(os.path.join(path_fold_pkl, f'fold{fold_now}.pkl'), 'rb'))
         elif split == 'test':
-            self.path_pretrained_pkl = os.path.join(path_pretrained_pkl_root, 'train')
+            # self.path_pretrained_pkl = os.path.join(path_pretrained_pkl_root, 'test')
             self.path_pkl = glob.glob(os.path.join(path_pretrained_pkl_root, f'test','*.pkl'))
             self.path_pkl.sort()
         
@@ -75,7 +87,6 @@ class Dataset_pkl(Dataset):
             self.rd.shuffle(_data_temp)
         return torch.from_numpy(np.stack(_data_temp, axis=0)), self.category_idx[_data['label']]
         
-
 
 # if __name__ == '__main__':
 #     Dataset_pkl(path_list_pkls = )
