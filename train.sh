@@ -1,6 +1,6 @@
 dataset=CAMELYON16
 gpu=0
-lr_pretrained=simclr_lr30
+lr_pretrained=simclr_lr100
 for scheduler in single multi; do
     for lr_downstream in 1e-5 1e-6 1e-7 1e-8; do
         # lr mix 길이는 8이어야 함 (gpu 갯수와 매칭 되어야 함)
