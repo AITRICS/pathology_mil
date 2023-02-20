@@ -20,7 +20,7 @@ import torchvision.transforms as transforms
 from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import Subset
 from typing import Tuple
-from utils import adjust_learning_rate, loss, Dataset_pkl, CosineAnnealingWarmUpSingle, optimal_thresh, multi_label_roc, save_checkpoint
+from utils import adjust_learning_rate, loss, Dataset_pkl, CosineAnnealingWarmUpSingle, CosineAnnealingWarmUpRestarts, optimal_thresh, multi_label_roc, save_checkpoint
 import models as milmodels
 from tqdm import tqdm, trange
 import numpy as np
@@ -33,6 +33,7 @@ parser = argparse.ArgumentParser(description='MIL Training')
 parser.add_argument('--data-root', default='/mnt/aitrics_ext/ext01/shared/pathology_mil', help='path to dataset')
 parser.add_argument('--fold', default=5, help='number of fold for cross validation')
 parser.add_argument('-j', '--workers', default=1, type=int, metavar='N', help='number of data loading workers (default: 1)')
+parser.add_argument('--scheduler', default='single', choices=['single', 'multi'], type=str, help='loss scheduler')
 parser.add_argument('--loss', default='bce', choices=['bce'], type=str, help='loss function')
 parser.add_argument('-b', '--batch-size', default=1, type=int, metavar='N', help='the total batch size on the current node (DDP)')
 parser.add_argument('--momentum', default=0.9, type=float, help='sgd momentum')
@@ -74,7 +75,10 @@ def run_fold(args, fold) -> Tuple:
     loader_val = torch.utils.data.DataLoader(dataset_val, batch_size=args.batch_size, shuffle=False, num_workers=args.workers, pin_memory=True)
 
     # 고쳐야 하나..?
-    scheduler = CosineAnnealingWarmUpSingle(optimizer, max_lr=args.lr, epochs=args.epochs, steps_per_epoch=len(loader_train))
+    if args.scheduler == 'single':
+        scheduler = CosineAnnealingWarmUpSingle(optimizer, max_lr=args.lr, epochs=args.epochs, steps_per_epoch=len(loader_train))
+    elif args.scheduler == 'multi':
+        scheduler = CosineAnnealingWarmUpRestarts(optimizer, eta_max=args.lr, step_total=args.epochs * len(loader_train))
     scaler = torch.cuda.amp.GradScaler()
 
     for epoch in trange(1, args.epochs):        
@@ -131,7 +135,7 @@ def validate(val_loader, model, criterion, args):
 if __name__ == '__main__':
     args = parser.parse_args()
     # txt_name = f'{args.dataset}_{args.pretrain_type}_downstreamLR_{args.lr}_optimizer_{args.optimizer}_epoch{args.epochs}_wd{args.weight_decay}'
-    txt_name = f'{args.dataset}_{args.pretrain_type}_epoch{args.epochs}_wd{args.weight_decay}'
+    txt_name = f'fin_{args.dataset}_{args.pretrain_type}_epoch{args.epochs}_wd{args.weight_decay}'
 
     acc_fold = []
     auc_fold = []

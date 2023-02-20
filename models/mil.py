@@ -9,9 +9,14 @@ class MilBase(nn.Module):
 
         if encoder == None:
             self.encoder = nn.Sequential(
+                nn.Dropout(p=0.3),
                 nn.Linear(dim_in, dim_latent),
-                nn.LayerNorm(dim_latent),
+                # nn.LayerNorm(dim_latent),
                 nn.ReLU(),
+                # nn.Dropout(p=0.3),
+                # nn.Linear(dim_latent, dim_latent),
+                # # nn.LayerNorm(dim_latent),
+                # nn.ReLU(),
             )
         else:
             self.encoder = encoder
