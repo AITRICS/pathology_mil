@@ -87,6 +87,17 @@ class Dataset_pkl(Dataset):
             self.rd.shuffle(_data_temp)
         return torch.from_numpy(np.stack(_data_temp, axis=0)), self.category_idx[_data['label']]
         
-
+class rnndata(Dataset):
+    def __init__(self, train_dict):
+        self.train_dict = train_dict 
+        
+    def __len__(self):
+        return len(self.train_dict)  
+    
+    def __getitem__(self, idx):
+        return self.train_dict[idx]['feats'], self.train_dict[idx]['target']
+        
+        
+        
 # if __name__ == '__main__':
 #     Dataset_pkl(path_list_pkls = )
