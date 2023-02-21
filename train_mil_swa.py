@@ -167,7 +167,7 @@ if __name__ == '__main__':
     auc_fold = np.mean(auc_fold, axis=0)
     
     with open(txt_name + '.txt', 'a' if os.path.isfile(txt_name + '.txt') else 'w') as f:
-        f.write(f'================== LR: {args.lr} || Optimizer: {args.optimizer} + SWA ====================\n')
+        f.write(f'===================== LR: {args.lr} || Optimizer: {args.optimizer} || scheduler: {args.scheduler} + SWA =======================\n')
         if args.num_classes == 1:
             f.write(f'AUC: {auc_fold[0]}\n')
         elif args.num_classes == 2:
