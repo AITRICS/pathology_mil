@@ -91,7 +91,7 @@ class rnndata(Dataset):
     def __init__(self, train_dict):
         self.train_dict = train_dict 
         
-    def __len__(self):
+    def __len__(self): 
         return len(self.train_dict)  
     
     def __getitem__(self, idx):

@@ -120,7 +120,7 @@ def train_single(epoch, rnn, rnn_loader, criterion, optimizer):
 def test_single(epoch, rnn, rnn_loader):
     rnn.eval()
     running_loss = 0.
-    running_fps = 0.
+    running_fps = 0. 
     running_fns = 0.
 
     with torch.no_grad():
