@@ -18,22 +18,23 @@ parser = argparse.ArgumentParser(description='MIL Training')
 parser.add_argument('--data-root', default='/mnt/aitrics_ext/ext01/shared/pathology_mil', help='path to dataset')
 parser.add_argument('--fold', default=5, help='number of fold for cross validation')
 parser.add_argument('-j', '--workers', default=1, type=int, metavar='N', help='number of data loading workers (default: 1)')
-parser.add_argument('--scheduler', default='single', choices=['single', 'multi'], type=str, help='loss scheduler')
-parser.add_argument('--loss', default='bce', choices=['bce'], type=str, help='loss function')
-parser.add_argument('-b', '--batch-size', default=1, type=int, metavar='N', help='the total batch size on the current node (DDP)')
-parser.add_argument('--momentum', default=0.9, type=float, help='sgd momentum')
 parser.add_argument('--seed', default=1, type=int, help='seed for initializing training. ')
-
 parser.add_argument('--dataset', default='tcga_stad', choices=['CAMELYON16', 'tcga_lung', 'tcga_stad'], type=str, help='dataset type')
 parser.add_argument('--pretrain-type', default='simclr_lr1', help='weight folder')
-parser.add_argument('--epochs', default=10, type=int, metavar='N', help='number of total epochs to run')
-parser.add_argument('--optimizer', default='adamw', choices=['sgd', 'adam', 'adamw'], type=str, help='optimizer')
-parser.add_argument('--lr', default=0.1, type=float, metavar='LR', help='initial learning rate', dest='lr')
+parser.add_argument('-b', '--batch-size', default=1, type=int, metavar='N', help='the total batch size on the current node (DDP)')
+parser.add_argument('--model_path', default=None, type=str)
+
+# parser.add_argument('--scheduler', default='single', choices=['single', 'multi'], type=str, help='loss scheduler')
+# parser.add_argument('--loss', default='bce', choices=['bce'], type=str, help='loss function')
+# parser.add_argument('--momentum', default=0.9, type=float, help='sgd momentum')
+# parser.add_argument('--epochs', default=10, type=int, metavar='N', help='number of total epochs to run')
+# parser.add_argument('--optimizer', default='adamw', choices=['sgd', 'adam', 'adamw'], type=str, help='optimizer')
+# parser.add_argument('--lr', default=0.1, type=float, metavar='LR', help='initial learning rate', dest='lr')
 # DTFD: 1e-4, TransMIL: 1e-5
-parser.add_argument('--wd', '--weight-decay', default=1e-4, type=float, metavar='W', help='weight decay (default: 1e-4)', dest='weight_decay')
-parser.add_argument('--mil-model', default='MilBase', choices=['MilBase'], type=str, help='use pre-training method')
-parser.add_argument('--agg', default='max', choices=['max', 'mean', 'rnn'])
-parser.add_argumetn('--model_path', default=None, type=str)
+#parser.add_argument('--wd', '--weight-decay', default=1e-4, type=float, metavar='W', help='weight decay (default: 1e-4)', dest='weight_decay')
+#parser.add_argument('--mil-model', default='MilBase', choices=['MilBase'], type=str, help='use pre-training method')
+#parser.add_argument('--agg', default='max', choices=['max', 'mean', 'rnn'])
+
 
 def errors(output, target):
     _, pred = output.topk(1, 1, True, True)
@@ -117,14 +118,11 @@ def train_single(epoch, rnn, rnn_loader, criterion, optimizer):
     running_loss = running_loss/len(rnn_loader.dataset)
     running_fps = running_fps/(np.array(rnn_loader.dataset.targets)==0).sum()
     running_fns = running_fns/(np.array(rnn_loader.dataset.targets)==1).sum()    
-    print('Training - Epoch: [{}/{}]\tLoss: {}\tFPR: {}\tFNR: {}'.format(epoch+1, args.nepochs, running_loss, running_fps, running_fns))
+    print('Training - Epoch: [{}/{}]\tLoss: {}\tFPR: {}\tFNR: {}'.format(epoch+1, 100, running_loss, running_fps, running_fns))
     return running_loss, running_fps, running_fns
 
 def test_single(epoch, rnn, rnn_loader):
     rnn.eval()
-    running_loss = 0.
-    running_fps = 0. 
-    running_fns = 0.
     bag_predictions = []
     bag_labels =[]
     with torch.no_grad():
@@ -146,7 +144,9 @@ def test_single(epoch, rnn, rnn_loader):
 
 if __name__ == '__main__':
     args = parser.parse_args()
-    txt_name = f'fin_{args.dataset}_{args.pretrain_type}_epoch{args.epochs}_wd{args.weight_decay}'
+    
+    # debug 
+    
 
     acc_fold = []
     auc_fold = []
