@@ -12,6 +12,7 @@ import torchvision.models as models
 from utils import rnndata, adjust_learning_rate, loss, Dataset_pkl, CosineAnnealingWarmUpSingle, CosineAnnealingWarmUpRestarts, optimal_thresh, multi_label_roc, save_checkpoint
 from models import MilBase, rnn_single
 import numpy as np
+from tqdm import trange
 
 parser = argparse.ArgumentParser(description='MIL Training')
 parser.add_argument('--data-root', default='/mnt/aitrics_ext/ext01/shared/pathology_mil', help='path to dataset')
@@ -32,7 +33,7 @@ parser.add_argument('--lr', default=0.1, type=float, metavar='LR', help='initial
 parser.add_argument('--wd', '--weight-decay', default=1e-4, type=float, metavar='W', help='weight decay (default: 1e-4)', dest='weight_decay')
 parser.add_argument('--mil-model', default='MilBase', choices=['MilBase'], type=str, help='use pre-training method')
 parser.add_argument('--agg', default='max', choices=['max', 'mean', 'rnn'])
-
+parser.add_argumetn('--model_path', default=None, type=str)
 
 def errors(output, target):
     _, pred = output.topk(1, 1, True, True)
@@ -58,7 +59,9 @@ def run_fold(args, fold):
     # pretrain encoder & fc 불러오기 (milbase) rnn model 불러오기 train optimization은 rnn꺼 건들필요 없음
     model = MilBase(dim_out=args.num_classes, pool=nn.AdaptiveMaxPool1d((1))).cuda() 
     model.eval()
-    state_dict = torch.load() # model path
+    state_dict = torch.load(args.model_path) # model path
+    missing_keys, unexpected_keys = model.load_state_dict(state_dict, strict=False)
+    assert missing_keys == [] and unexpected_keys == []
     rnn = rnn_single(args.ndims).cuda()
     criterion = nn.CrossEntropyLoss().cuda()
     optimizer = torch.optim.SGD(rnn.parameters(), 0.1, momentum=0.9, dampening=0, weight_decay=1e-4, nesterov=True)
@@ -72,7 +75,7 @@ def run_fold(args, fold):
     rnn_val_loader = torch.utils.data.DataLoader(rnn_val_dataset, batch_size=128, shuffle=False, num_workers=4, pin_memory=False)
 
     # rnn train
-    for epoch in range(100):
+    for epoch in trange(100):
         train_loss, train_fpr, train_fnr = train_single(epoch, rnn, rnn_train_loader, criterion, optimizer)
     
     # validate 
@@ -122,15 +125,21 @@ def test_single(epoch, rnn, rnn_loader):
     running_loss = 0.
     running_fps = 0. 
     running_fns = 0.
-
+    bag_predictions = []
+    bag_labels =[]
     with torch.no_grad():
         for j, (inputs, target) in enumerate(rnn_loader):
             rnn.zero_grad()
             state = rnn.init_hidden(inputs[0].size(0)).cuda() #inputs[0]은 slide하나
             for s in range(len(inputs)): # iterate every slide in minibatch
                 input = inputs[s].cuda()
-                output, state = rnn(input, state) #out dim 2인듯
-            
+                output, state = rnn(input, state) #out dim 무조건 2인듯
+                bag_predictions.append(output)
+                if target == 0:
+                        target = np.array([0. ,1.])
+                elif target == 1:
+                    target = np.array([1., 0.])
+                bag_labels.append(target)
 
         auc, acc = multi_label_roc(bag_labels, bag_predictions, num_classes=bag_labels.shape[-1], pos_label=1)
     return auc, acc
