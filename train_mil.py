@@ -38,6 +38,7 @@ parser.add_argument('--loss', default='bce', choices=['bce'], type=str, help='lo
 parser.add_argument('-b', '--batch-size', default=1, type=int, metavar='N', help='the total batch size on the current node (DDP)')
 parser.add_argument('--momentum', default=0.9, type=float, help='sgd momentum')
 parser.add_argument('--seed', default=1, type=int, help='seed for initializing training. ')
+parser.add_argument('--save', default=False, type=bool)
 
 parser.add_argument('--dataset', default='tcga_stad', choices=['CAMELYON16', 'tcga_lung', 'tcga_stad'], type=str, help='dataset type')
 parser.add_argument('--pretrain-type', default='simclr_lr1', help='weight folder')
@@ -86,6 +87,13 @@ def run_fold(args, fold) -> Tuple:
     for epoch in trange(1, args.epochs):        
         train(loader_train, model, criterion, optimizer, scheduler, scaler)
     auc, acc = validate(loader_val, model, criterion, args)
+    
+    if args.save :
+        state_dict = model.state_dict()
+        save_dict = {"fold": fold, "val_acc": acc, "val_auc": auc, "state_dict": state_dict}
+        filename = f'dataset_{args.dataset}_pretrain_{args.pretrain_type}_lr_{args.lr}_fold_{fold}'
+        torch.save(save_dict, filename)
+        print("Saving checkpoint", filename)
     
     return auc, acc, dataset_val.category_idx
 
@@ -137,7 +145,7 @@ def validate(val_loader, model, criterion, args):
 if __name__ == '__main__':
     args = parser.parse_args()
     # txt_name = f'{args.dataset}_{args.pretrain_type}_downstreamLR_{args.lr}_optimizer_{args.optimizer}_epoch{args.epochs}_wd{args.weight_decay}'
-    txt_name = f'fin_{args.dataset}_{args.pretrain_type}_epoch{args.epochs}_wd{args.weight_decay}_scheduler_{args.scheduler}'
+    txt_name = f'fin_{args.dataset}_{args.pretrain_type}_epoch{args.epochs}_wd{args.weight_decay}'
 
     acc_fold = []
     auc_fold = []
