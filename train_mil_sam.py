@@ -175,7 +175,7 @@ if __name__ == '__main__':
     auc_fold = np.mean(auc_fold, axis=0)
     
     with open(txt_name + '.txt', 'a' if os.path.isfile(txt_name + '.txt') else 'w') as f:
-        f.write(f'===================== LR: {args.lr} || Optimizer: {args.optimizer} || scheduler: {args.scheduler} + SAM =======================\n')
+        f.write(f'===================== LR-pretrain: {args.pretrain_type} || LR-down: {args.lr} || Optimizer: {args.optimizer}+SAM || scheduler: {args.scheduler} =======================\n')
         if args.num_classes == 1:
             f.write(f'AUC: {auc_fold[0]}\n')
         elif args.num_classes == 2:
@@ -183,3 +183,9 @@ if __name__ == '__main__':
                 f.write(f'AUC ({k}): {auc_fold[i]}\n')
         f.write(f'ACC: {sum(acc_fold)/float(len(acc_fold))}\n')
         f.write(f'==========================================================================================\n\n\n')
+    
+    if args.pushtoken:
+        from pushbullet import Pushbullet
+        import socket
+        pb = Pushbullet(args.pushtoken)
+        push = pb.push_note('MIL train finished', f'{socket.gethostname()}')
