@@ -49,6 +49,8 @@ parser.add_argument('--lr', default=0.1, type=float, metavar='LR', help='initial
 parser.add_argument('--wd', '--weight-decay', default=1e-4, type=float, metavar='W', help='weight decay (default: 1e-4)', dest='weight_decay')
 parser.add_argument('--mil-model', default='MilBase', choices=['MilBase'], type=str, help='use pre-training method')
 
+parser.add_argument('--pushtoken', default=False, help='Push Bullet token')
+
 def run_fold(args, fold) -> Tuple:
 
     random.seed(args.seed)
