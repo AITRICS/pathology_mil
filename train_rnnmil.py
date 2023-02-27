@@ -26,6 +26,7 @@ parser.add_argument('--model_path', default=None, type=str)
 # rnn
 parser.add_argument('--r-bs', default=128, type=int)
 parser.add_argument('--r-epoch', default=100, type=int)
+parser.add_argument('--r-lr', default=0.1, type=int)
 
 # parser.add_argument('--scheduler', default='single', choices=['single', 'multi'], type=str, help='loss scheduler')
 # parser.add_argument('--loss', default='bce', choices=['bce'], type=str, help='loss function')
@@ -60,7 +61,7 @@ def run_fold(args, fold):
     # rnn model & optimizer
     rnn = rnn_single(128).cuda()
     criterion = nn.CrossEntropyLoss().cuda()
-    optimizer = torch.optim.SGD(rnn.parameters(), 0.1, momentum=0.9, dampening=0, weight_decay=1e-4, nesterov=True)
+    optimizer = torch.optim.SGD(rnn.parameters(), lr=args.r_lr, momentum=0.9, dampening=0, weight_decay=1e-4, nesterov=True)
     
     # inference & collect rnn data
     train_bags = inference(loader_train, model)
