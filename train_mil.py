@@ -49,6 +49,8 @@ parser.add_argument('--lr', default=0.1, type=float, metavar='LR', help='initial
 parser.add_argument('--wd', '--weight-decay', default=1e-4, type=float, metavar='W', help='weight decay (default: 1e-4)', dest='weight_decay')
 parser.add_argument('--mil-model', default='MilBase', choices=['MilBase'], type=str, help='use pre-training method')
 
+parser.add_argument('--pushtoken', default=False, help='Push Bullet token')
+
 def run_fold(args, fold) -> Tuple:
 
     random.seed(args.seed)
@@ -143,7 +145,7 @@ def validate(val_loader, model, criterion, args):
 if __name__ == '__main__':
     args = parser.parse_args()
     # txt_name = f'{args.dataset}_{args.pretrain_type}_downstreamLR_{args.lr}_optimizer_{args.optimizer}_epoch{args.epochs}_wd{args.weight_decay}'
-    txt_name = f'fin_{args.dataset}_{args.pretrain_type}_epoch{args.epochs}_wd{args.weight_decay}'
+    txt_name = f'fin_{args.dataset}_{args.pretrain_type}_epoch{args.epochs}_wd{args.weight_decay}_scheduler_{args.scheduler}'
 
     acc_fold = []
     auc_fold = []
@@ -165,7 +167,7 @@ if __name__ == '__main__':
     auc_fold = np.mean(auc_fold, axis=0)
     
     with open(txt_name + '.txt', 'a' if os.path.isfile(txt_name + '.txt') else 'w') as f:
-        f.write(f'===================== LR: {args.lr} || Optimizer: {args.optimizer} || scheduler: {args.scheduler} =======================\n')
+        f.write(f'===================== LR-pretrain: {args.pretrain_type} || LR-down: {args.lr} || Optimizer: {args.optimizer} || scheduler: {args.scheduler} =======================\n')
         if args.num_classes == 1:
             f.write(f'AUC: {auc_fold[0]}\n')
         elif args.num_classes == 2:
@@ -173,3 +175,10 @@ if __name__ == '__main__':
                 f.write(f'AUC ({k}): {auc_fold[i]}\n')
         f.write(f'ACC: {sum(acc_fold)/float(len(acc_fold))}\n')
         f.write(f'==========================================================================================\n\n\n')
+
+
+    if args.pushtoken:
+        from pushbullet import Pushbullet
+        import socket
+        pb = Pushbullet(args.pushtoken)
+        push = pb.push_note('MIL train finished', f'{socket.gethostname()}')
