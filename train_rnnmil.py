@@ -80,7 +80,7 @@ def run_fold(args, fold):
     return auc, acc
 
 def inference(loader,model):
-    bags=[]
+    bags=[] 
     with torch.no_grad():
         for i, (images, target) in enumerate(loader):
             images = torch.Tensor(images).type(torch.FloatTensor).cuda()

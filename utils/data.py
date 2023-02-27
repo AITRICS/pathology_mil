@@ -26,7 +26,7 @@ class Dataset_pkl(Dataset):
         self.rd = random.Random(seed)
 
         #  Normal must be 0
-        print(f'=== Category Indexing ===')
+        print(f'=== Category Indexing ===') 
         self.category_idx = {}
         if 'normal' in os.listdir(os.path.join(path_pretrained_pkl_root, 'train' if (split=='train' or split=='val') else 'test')):
             assert num_classes == 1
