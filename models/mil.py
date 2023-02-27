@@ -63,9 +63,9 @@ class rnn_single(nn.Module):
         self.activation = nn.ReLU()
 
     def forward(self, input, state):
-        input = self.fc1(input)
+        input = self.fc1(input) 
         state = self.fc2(state)
-        state = self.activation(state+input)
+        state = self.activation(state+input) 
         output = self.fc3(state)
         return output, state
 

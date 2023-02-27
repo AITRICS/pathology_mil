@@ -88,14 +88,14 @@ class Dataset_pkl(Dataset):
         return torch.from_numpy(np.stack(_data_temp, axis=0)), self.category_idx[_data['label']]
         
 class rnndata(Dataset):
-    def __init__(self, train_dict):
-        self.train_dict = train_dict 
+    def __init__(self, train_list):
+        self.train_list = train_list 
         
     def __len__(self): 
-        return len(self.train_dict)  
+        return len(self.train_list)  
     
     def __getitem__(self, idx):
-        return self.train_dict[idx]['feats'], self.train_dict[idx]['target']
+        return self.train_list[idx]['feats'],  self.train_list[idx]['target']
         
         
         
