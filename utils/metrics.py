@@ -12,7 +12,7 @@ def optimal_thresh(fpr, tpr, thresholds, p=0):
 
 def multi_label_roc(labels, predictions, num_classes, pos_label=1):
     bag_score = 0
-    aucs = []
+    aucs = [] 
     if len(predictions.shape)==1:
         predictions = predictions[:, None]
     for c in range(0, num_classes):
