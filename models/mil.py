@@ -11,12 +11,7 @@ class MilBase(nn.Module):
             self.encoder = nn.Sequential(
                 nn.Dropout(p=0.3),
                 nn.Linear(dim_in, dim_latent),
-                # nn.LayerNorm(dim_latent),
                 nn.ReLU(),
-                # nn.Dropout(p=0.3),
-                # nn.Linear(dim_latent, dim_latent),
-                # # nn.LayerNorm(dim_latent),
-                # nn.ReLU(),
             )
         else:
             self.encoder = encoder
@@ -28,7 +23,7 @@ class MilBase(nn.Module):
         
         x = self.encoder(x)
 
-        # x --> #slide x #patches x dim_in
+        # x --> #slide x #patches x dim_latent
         x = self.score(x)
 
         # x --> #slide x #patches x dim_out
@@ -37,17 +32,33 @@ class MilBase(nn.Module):
         # x --> #slide x dim_out
         return x
 
-# class MilMax(MilBase):
+class MilTransformer(MilBase):
 
-#     def __init__(self, **kwargs):
-#         super().__init__(**kwargs)
-#         self.score = nn.Sequential(nn.Linear(dim_in, dim_latent, bias=False),
-#                                             nn.BatchNorm1d(dim_latent),
-#                                             nn.ReLU(inplace=True),
-#                                             nn.Linear(dim_latent, 1, bias=False))
-    
-#     def forward(, x: torch.Tensor):
+    def __init__(self, dim_in:int=2048, dim_latent: int= 512, dim_out = 1, num_heads=8, num_layers=3, num_class=1, **kwargs):
+        super().__init__(**kwargs)
 
+        self.encoder = nn.Sequential(
+                nn.Dropout(p=0.3),
+                nn.Linear(dim_in, dim_latent),
+                nn.ReLU(),
+            )
+        
+        self.pool = nn.TransformerEncoder(nn.TransformerEncoderLayer(d_model=dim_latent, nhead=num_heads), num_layers=num_layers, enable_nested_tensor=True, mask_check=True)    
+        self.cls_token = nn.Parameter(torch.zeros(1, 1, dim_latent))
+
+        self.score_bag = nn.Linear(dim_latent, num_class, bias=True)
+        self.score_instance = nn.Linear(dim_latent, num_class, bias=True)
+
+
+    def forward(self, x: torch.Tensor):
+
+        x = torch.cat([self.cls_token, self.encoder(x)], dim=1)
+        # x --> #slide x (1 + #patches) x dim_latent
+
+        x = self.pool(x)
+        # x --> #slide x (1 + #patches) x dim_latent
+
+        return self.score_bag(x[:, 0:1, :]), self.score_instance(x[:, 1:, :])
 
 class rnn_single(nn.Module):
     
