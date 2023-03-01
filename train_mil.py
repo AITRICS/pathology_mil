@@ -24,6 +24,8 @@ from utils import adjust_learning_rate, loss, Dataset_pkl, CosineAnnealingWarmUp
 import models as milmodels
 from tqdm import tqdm, trange
 import numpy as np
+import socket
+from datetime import datetime
 
 model_names = sorted(name for name in models.__dict__
     if name.islower() and not name.startswith("__")
@@ -145,7 +147,7 @@ def validate(val_loader, model, criterion, args):
 if __name__ == '__main__':
     args = parser.parse_args()
     # txt_name = f'{args.dataset}_{args.pretrain_type}_downstreamLR_{args.lr}_optimizer_{args.optimizer}_epoch{args.epochs}_wd{args.weight_decay}'
-    txt_name = f'fin_{args.dataset}_{args.pretrain_type}_epoch{args.epochs}_wd{args.weight_decay}_scheduler_{args.scheduler}'
+    txt_name = f'{datetime.today().strftime("%m%d")}_{args.dataset}_{args.pretrain_type}_epoch{args.epochs}_wd{args.weight_decay}_scheduler_{args.scheduler}'
 
     acc_fold = []
     auc_fold = []
