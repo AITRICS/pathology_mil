@@ -33,10 +33,10 @@ class MilBase(nn.Module):
         return x
 
 
-class MilTransformer(MilBase):
+class MilTransformer(nn.Module):
 
-    def __init__(self, encoder=None, dim_in:int=2048, dim_latent: int= 512, dim_out = 1, num_heads=8, num_layers=3, share_proj=False, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, encoder=None, dim_in:int=2048, dim_latent: int= 512, dim_out = 1, num_heads=8, num_layers=3, share_proj=False):
+        super().__init__()
 
         if encoder == None:
             self.encoder = nn.Sequential(
@@ -52,8 +52,9 @@ class MilTransformer(MilBase):
         else:
             self.encoder = encoder()
         
-        self.pool = nn.TransformerEncoder(nn.TransformerEncoderLayer(d_model=dim_latent, nhead=num_heads), num_layers=num_layers, enable_nested_tensor=True)    
-        self.cls_token = nn.Parameter(torch.zeros(1, 1, dim_latent))
+        # self.pool = nn.TransformerEncoder(nn.TransformerEncoderLayer(d_model=dim_latent, nhead=num_heads), num_layers=num_layers, enable_nested_tensor=True)    
+        self.pool = nn.TransformerEncoder(nn.TransformerEncoderLayer(d_model=dim_latent, nhead=num_heads, batch_first=True), num_layers=num_layers)    
+        self.cls_token = nn.Parameter(torch.zeros(1, 1, dim_latent, requires_grad=True))
 
         self.score_bag = nn.Linear(dim_latent, dim_out, bias=True)
         self.score_instance = nn.Linear(dim_latent, dim_out, bias=True)

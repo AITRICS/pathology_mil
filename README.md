@@ -13,3 +13,13 @@ This repo is tested under Python 3.8, PyTorch 1.12+cuda11.3
 torchrun --standalone --nnodes=1 --nproc_per_node=$NUMBER_OF_GPUS_PER_NODE main.py
 ```
 
+## Installation
+
+```
+conda create -n p1131 python=3.8
+conda install pytorch torchvision torchaudio pytorch-cuda=11.6 -c pytorch -c nvidia -y
+conda install -c anaconda scikit-learn -y
+conda install -c conda-forge tqdm -y
+~/anaconda3/envs/p1131/bin/pip install pushbullet-python
+
+```
