@@ -24,10 +24,11 @@ from utils import adjust_learning_rate, loss, Dataset_pkl, CosineAnnealingWarmUp
 import models as milmodels
 from tqdm import tqdm, trange
 import numpy as np
+from utils.sam import SAM
+from utils.bypass_bn import enable_running_stats, disable_running_stats
 import socket
 from datetime import datetime
 import torchvision
-import torch.nn.functional as F
 
 model_names = sorted(name for name in models.__dict__
     if name.islower() and not name.startswith("__")
@@ -45,16 +46,17 @@ parser.add_argument('--seed', default=1, type=int, help='seed for initializing t
 parser.add_argument('--save', default=False, type=bool)
 
 parser.add_argument('--dataset', default='tcga_stad', choices=['CAMELYON16', 'tcga_lung', 'tcga_stad'], type=str, help='dataset type')
-parser.add_argument('--pretrain-type', default='ImageNet_Res50', help='weight folder')
-parser.add_argument('--epochs', default=100, type=int, metavar='N', help='number of total epochs to run')
+parser.add_argument('--pretrain-type', default='simclr_lr1', help='weight folder')
+parser.add_argument('--epochs', default=4, type=int, metavar='N', help='number of total epochs to run')
 parser.add_argument('--optimizer', default='adamw', choices=['sgd', 'adam', 'adamw'], type=str, help='optimizer')
-parser.add_argument('--lr', default=0.000001, type=float, metavar='LR', help='initial learning rate', dest='lr')
+parser.add_argument('--lr', default=0.0001, type=float, metavar='LR', help='initial learning rate', dest='lr')
 # DTFD: 1e-4, TransMIL: 1e-5
 parser.add_argument('--wd', '--weight-decay', default=1e-4, type=float, metavar='W', help='weight decay (default: 1e-4)', dest='weight_decay')
 parser.add_argument('--mil-model', default='MilTransformer', choices=['MilTransformer'], type=str, help='use pre-training method')
 parser.add_argument('--pseudo-prob-threshold', default=0.9, type=float, help='instance with probability greater than pseudo_prob_threshold will have pseudo label')
-parser.add_argument('--semi-start-epoch', default=20, type=int, help='epoch that starts instance training')
+parser.add_argument('--semi-start-epoch', default=2, type=int, help='epoch that starts instance training')
 parser.add_argument('--share-proj', action='store_true', help='share projection layer between instance tokens and bag token')
+parser.add_argument('--num-layers', default=3, type=int, help='number of transformer layers')
 
 parser.add_argument('--pushtoken', default=False, help='Push Bullet token')
 
@@ -66,7 +68,7 @@ def run_fold(args, fold) -> Tuple:
     torch.backends.cudnn.benchmark = True
     # cudnn.deterministic = True
 
-    model = milmodels.__dict__[args.mil_model](dim_out=args.num_classes, share_proj=args.share_proj).cuda() 
+    model = milmodels.__dict__[args.mil_model](dim_out=args.num_classes, num_layers=args.num_layers, share_proj=args.share_proj).cuda() 
 
     if args.loss == 'bce':
         # default: reduction: str = 'mean'
@@ -79,12 +81,15 @@ def run_fold(args, fold) -> Tuple:
 
 # ['adam', 'sgd', 'adamw', 'swa', 'sam']
     if args.optimizer == 'adam':
-        optimizer = torch.optim.Adam(model.parameters(), 0, weight_decay=args.weight_decay)
+        optimizer_based = torch.optim.Adam
     elif args.optimizer == 'sgd':
-        optimizer = torch.optim.SGD(model.parameters(), 0, momentum=args.momentum, weight_decay=args.weight_decay)
+        optimizer_based = torch.optim.SGD
     elif args.optimizer == 'adamw':
-        optimizer = torch.optim.AdamW(model.parameters(), 0, weight_decay=args.weight_decay)
-  
+        optimizer_based = torch.optim.AdamW
+    # elif args.optim_wrapper == 'sam':
+    # https://github.com/davda54/sam
+    optimizer = SAM(model.parameters(), optimizer_based, lr=args.lr, weight_decay=args.weight_decay, adaptive=True)
+    
     dataset_train = Dataset_pkl(path_fold_pkl=os.path.join(args.data_root, 'cv', args.dataset), path_pretrained_pkl_root=os.path.join(args.data_root, 'features', args.dataset, args.pretrain_type), fold_now=fold, fold_all=args.fold, shuffle_slide=True, shuffle_patch=True, split='train', num_classes=args.num_classes, seed=args.seed)
     loader_train = torch.utils.data.DataLoader(dataset_train, batch_size=args.batch_size, shuffle=True, num_workers=args.workers, pin_memory=True)
     
@@ -100,8 +105,7 @@ def run_fold(args, fold) -> Tuple:
 
     for epoch in trange(1, args.epochs):        
         train(loader_train, model, criterion_mean, criterion_none, optimizer, scheduler, scaler, func_prob, epoch)
-        auc, acc = validate(loader_train, model, epoch, args, 'Tr')
-        auc, acc = validate(loader_val, model, epoch, args, 'Val')
+    auc, acc = validate(loader_val, model, criterion_mean, args)
     
     if args.save :
         state_dict = model.state_dict()
@@ -114,23 +118,13 @@ def run_fold(args, fold) -> Tuple:
     return auc, acc, dataset_val.category_idx
 
 def train(train_loader, model, criterion_mean, criterion_none, optimizer, scheduler, scaler, func_prob, epoch):
-    model.train()
-    # cnt=0
-    for i, (images, target) in enumerate(train_loader):
-        # images --> #bags x #instances x #dims
-        images = images.to(args.device, non_blocking=True)
-        # target --> #bags x #classes
-        target = target.to(args.device, non_blocking=True)
-
-        optimizer.zero_grad()
-        with torch.cuda.amp.autocast():
+    def train_single(model, images, target, epoch):
             # logit_bag --> #bags x #classes
             # logit_instance --> #bags x #patches x #classes
             logit_bag, logit_instance = model(images)
             # loss_bag = criterion_mean(logit_bag.squeeze(1), target)
             loss_bag = torchvision.ops.sigmoid_focal_loss(logit_bag, target, reduction='mean')
-            
-            # cnt += (F.relu(torch.sign(logit_bag.detach()))[0,0] == target[0,0])
+
             if epoch >= args.semi_start_epoch:
                 # lung 이면 코드 수정해야함. #bags=1 일때만 돌아감!!!
                 if target == 0:
@@ -148,24 +142,41 @@ def train(train_loader, model, criterion_mean, criterion_none, optimizer, schedu
                     if (torch.sum(pseudo_label_positive) < 1):
                         loss_instance = torchvision.ops.sigmoid_focal_loss(torch.max(logit_instance), torch.ones([], device=args.device))
                     else:
-                        print(f'positive bag with multiple presumably positive instances')
                         loss_instance = torch.sum(mask * torchvision.ops.sigmoid_focal_loss(logit_instance, pseudo_label_positive))/torch.sum(mask)
             
                 loss = loss_bag + loss_instance
             else:
                 loss = loss_bag
 
-        scaler.scale(loss).backward()
-        scaler.step(optimizer)
-        scaler.update()
-        scheduler.step()
-    # print(f'[tr] Epoch {epoch}: Acc[{round((cnt/float(len(train_loader))).item(), 4)}]')
+            return loss
+    
+    model.train()
+    for i, (images, target) in enumerate(train_loader):
+        # images --> #bags x #instances x #dims
+        images = images.type(torch.FloatTensor).to(args.device, non_blocking=True)
+        # target --> #bags x #classes
+        target = target.type(torch.FloatTensor).to(args.device, non_blocking=True)
 
-def validate(val_loader, model, epoch, args, data):
+        # First step
+        optimizer.zero_grad()
+        # with torch.cuda.amp.autocast():
+        enable_running_stats(model)
+        loss = train_single(model=model, images=images, target=target, epoch=epoch)
+        loss.backward()
+        optimizer.first_step(zero_grad=True)
+
+        # Second step
+        optimizer.zero_grad()
+        disable_running_stats(model)
+        loss = train_single(model=model, images=images, target=target, epoch=epoch)
+        loss.backward()
+        optimizer.second_step(zero_grad=True)
+        scheduler.step()
+
+def validate(val_loader, model, criterion, args):
     bag_labels = []
     bag_predictions = []
     model.eval()
-    # cnt=0
     with torch.no_grad():
         for i, (images, target) in enumerate(val_loader):
             # target --> #bags x #classes
@@ -179,21 +190,21 @@ def validate(val_loader, model, epoch, args, data):
                 output, _ = model(images)
             #classes  (prob)
             bag_predictions.append(torch.sigmoid(output.type(torch.DoubleTensor)).squeeze(0).cpu().numpy())
-            # cnt += (torch.sign(F.relu(output.detach()))[0,0] == target[0,0])
+
         # bag_labels --> #classes
         bag_labels = np.array(bag_labels)
         # bag_predictions --> #classes
         bag_predictions = np.array(bag_predictions)
         assert len(bag_predictions.shape) == 2
         auc, acc = multi_label_roc(bag_labels, bag_predictions, num_classes=bag_labels.shape[-1], pos_label=1)
-    print(f'[{data}] Epoch {epoch}: AUC[{auc}]')
+
     return auc, acc
 
 if __name__ == '__main__':
     args = parser.parse_args()
     # txt_name = f'{args.dataset}_{args.pretrain_type}_downstreamLR_{args.lr}_optimizer_{args.optimizer}_epoch{args.epochs}_wd{args.weight_decay}'
-    txt_name = f'Transformer_{datetime.today().strftime("%m%d")}_{args.dataset}_{args.pretrain_type}_epoch{args.epochs}_wd{args.weight_decay}_scheduler_{args.scheduler}_'+\
-    f'thresh_{args.pseudo_prob_threshold}_semiepoch_{args.semi_start_epoch}_share_{args.share_proj}'
+    txt_name = f'Transformer_Transpose_{datetime.today().strftime("%m%d")}_{args.dataset}_{args.pretrain_type}_epoch{args.epochs}_wd{args.weight_decay}_scheduler_{args.scheduler}_'+\
+    f'thresh_{args.pseudo_prob_threshold}_semiepoch_{args.semi_start_epoch}_share_{args.share_proj}_nl_{args.num_layers}'
     
     acc_fold = []
     auc_fold = []
@@ -215,7 +226,7 @@ if __name__ == '__main__':
     auc_fold = np.mean(auc_fold, axis=0)
     
     with open(txt_name + '.txt', 'a' if os.path.isfile(txt_name + '.txt') else 'w') as f:
-        f.write(f'==== LR-pretrain: {args.pretrain_type} || LR-down: {args.lr} || Optimizer: {args.optimizer} || scheduler: {args.scheduler} || ')
+        f.write(f'==== LR-pretrain: {args.pretrain_type} || LR-down: {args.lr} || Optimizer: {args.optimizer}+SAM || scheduler: {args.scheduler} || ')
         
         if args.num_classes == 1:
             f.write(f'AUC: {auc_fold[0]}\n')
@@ -224,7 +235,6 @@ if __name__ == '__main__':
                 f.write(f'AUC ({k}): {auc_fold[i]}\n')
         f.write(f'ACC: {sum(acc_fold)/float(len(acc_fold))}\n')
         f.write(f'==========================================================================================\n\n\n')
-
 
     if args.pushtoken:
         from pushbullet import API

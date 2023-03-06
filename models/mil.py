@@ -53,6 +53,48 @@ class MilTransformer(nn.Module):
             self.encoder = encoder()
         
         # self.pool = nn.TransformerEncoder(nn.TransformerEncoderLayer(d_model=dim_latent, nhead=num_heads), num_layers=num_layers, enable_nested_tensor=True)    
+        self.pool = nn.TransformerEncoder(nn.TransformerEncoderLayer(d_model=dim_latent, nhead=num_heads, batch_first=False), num_layers=num_layers)    
+        self.cls_token = nn.Parameter(torch.zeros(1, 1, dim_latent, requires_grad=True))
+
+        self.score_bag = nn.Linear(dim_latent, dim_out, bias=True)
+        self.score_instance = nn.Linear(dim_latent, dim_out, bias=True)
+        self.share_proj = share_proj
+
+    def forward(self, x: torch.Tensor):
+
+        # x --> #slide x (1 + #patches) x dim_latent
+        x = torch.cat([self.cls_token, self.encoder(x)], dim=1)        
+
+        x = x.transpose(0, 1)
+        x = self.pool(x)
+        x = x.transpose(0, 1)
+
+        # x --> #slide x (1 + #patches) x dim_latent
+        if self.share_proj:
+            return self.score_bag(x[:, 0, :]), self.score_bag(x[:, 1:, :])
+        else:
+            return self.score_bag(x[:, 0, :]), self.score_instance(x[:, 1:, :])
+
+class MilTransformer_(nn.Module):
+
+    def __init__(self, encoder=None, dim_in:int=2048, dim_latent: int= 512, dim_out = 1, num_heads=8, num_layers=3, share_proj=False):
+        super().__init__()
+
+        if encoder == None:
+            self.encoder = nn.Sequential(
+                nn.Dropout(p=0.3),
+                nn.Linear(dim_in, dim_latent),
+                nn.ReLU(),
+            )
+        elif encoder == 'resnet':
+            assert dim_latent == 512
+            from torchvision.models import resnet18, ResNet18_Weights
+            self.encoder = resnet18(weights=ResNet18_Weights.DEFAULT)
+            self.encoder.fc = nn.Identity()
+        else:
+            self.encoder = encoder()
+        
+        # self.pool = nn.TransformerEncoder(nn.TransformerEncoderLayer(d_model=dim_latent, nhead=num_heads), num_layers=num_layers, enable_nested_tensor=True)    
         self.pool = nn.TransformerEncoder(nn.TransformerEncoderLayer(d_model=dim_latent, nhead=num_heads, batch_first=True), num_layers=num_layers)    
         self.cls_token = nn.Parameter(torch.zeros(1, 1, dim_latent, requires_grad=True))
 
