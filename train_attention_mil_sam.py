@@ -105,50 +105,55 @@ def run_fold(args, fold) -> Tuple:
 
     for epoch in trange(1, args.epochs):        
         train(loader_train, model, criterion_mean, criterion_none, optimizer, scheduler, scaler, func_prob, epoch)
-    auc, acc = validate(loader_val, model, criterion_mean, args)
+    auc_val, acc_val = validate(loader_val, model, criterion_mean, args)
+    auc_tr, acc_tr = validate(loader_train, model, criterion_mean, args)
     
     if args.save :
         state_dict = model.state_dict()
-        save_dict = {"fold": fold, "val_acc": acc, "val_auc": auc, "state_dict": state_dict}
+        save_dict = {"fold": fold, "val_acc": acc_val, "val_auc": auc_val, "state_dict": state_dict}
         filename = f'dataset_{args.dataset}_pretrain_{args.pretrain_type}_lr_{args.lr}_fold_{fold}'
         torch.save(save_dict, filename)
         print("Saving checkpoint", filename)
     
     del model
-    return auc, acc, dataset_val.category_idx
+    return auc_val, acc_val, dataset_val.category_idx, auc_tr, acc_tr 
 
 def train(train_loader, model, criterion_mean, criterion_none, optimizer, scheduler, scaler, func_prob, epoch):
     def train_single(model, images, target, epoch):
-            # logit_bag --> #bags x #classes
-            # logit_instance --> #bags x #patches x #classes
-            logit_bag, logit_instance = model(images)
-            # loss_bag = criterion_mean(logit_bag.squeeze(1), target)
-            loss_bag = torchvision.ops.sigmoid_focal_loss(logit_bag, target, reduction='mean')
+        cnt_positive=0
+        cnt_over_thresh=0
+        # logit_bag --> #bags x #classes
+        # logit_instance --> #bags x #patches x #classes
+        logit_bag, logit_instance = model(images)
+        # loss_bag = criterion_mean(logit_bag.squeeze(1), target)
+        loss_bag = torchvision.ops.sigmoid_focal_loss(logit_bag, target, reduction='mean')
 
-            if epoch >= args.semi_start_epoch:
-                # lung 이면 코드 수정해야함. #bags=1 일때만 돌아감!!!
-                if target == 0:
-                    loss_instance = torchvision.ops.sigmoid_focal_loss(logit_instance, target.unsqueeze(1).repeat(logit_instance.size(0), logit_instance.size(1), logit_instance.size(2)), reduction='mean')
-                else:
-                    #slide x #patches x num_class
-                    # logit_instance = logit_instance.squeeze(0)
-                    # #patches x num_class
-                    prob_instance = func_prob(logit_instance)
-                    pseudo_label_positive = torch.zeros_like(prob_instance).to(args.device, non_blocking=True)
-                    pseudo_label_positive[prob_instance>args.pseudo_prob_threshold] = 1.0
-                    
-                    mask = pseudo_label_positive.detach().clone()
-                    mask[prob_instance<(1.0-args.pseudo_prob_threshold)]=1.0
-                    if (torch.sum(pseudo_label_positive) < 1):
-                        loss_instance = torchvision.ops.sigmoid_focal_loss(torch.max(logit_instance), torch.ones([], device=args.device))
-                    else:
-                        loss_instance = torch.sum(mask * torchvision.ops.sigmoid_focal_loss(logit_instance, pseudo_label_positive))/torch.sum(mask)
-            
-                loss = loss_bag + loss_instance
+        if epoch >= args.semi_start_epoch:
+            # lung 이면 코드 수정해야함. #bags=1 일때만 돌아감!!!
+            if target == 0:
+                loss_instance = torchvision.ops.sigmoid_focal_loss(logit_instance, target.unsqueeze(1).repeat(logit_instance.size(0), logit_instance.size(1), logit_instance.size(2)), reduction='mean')
             else:
-                loss = loss_bag
+                cnt_positive+=1
+                #slide x #patches x num_class
+                # logit_instance = logit_instance.squeeze(0)
+                # #patches x num_class
+                prob_instance = func_prob(logit_instance)
+                pseudo_label_positive = torch.zeros_like(prob_instance).to(args.device, non_blocking=True)
+                pseudo_label_positive[prob_instance>args.pseudo_prob_threshold] = 1.0
+                
+                mask = pseudo_label_positive.detach().clone()
+                mask[prob_instance<(1.0-args.pseudo_prob_threshold)]=1.0
+                if (torch.sum(pseudo_label_positive) < 1):
+                    loss_instance = torchvision.ops.sigmoid_focal_loss(torch.max(logit_instance), torch.ones([], device=args.device))
+                else:
+                    loss_instance = torch.sum(mask * torchvision.ops.sigmoid_focal_loss(logit_instance, pseudo_label_positive))/torch.sum(mask)
+                    cnt_over_thresh+=1
+        
+            loss = loss_bag + loss_instance
+        else:
+            loss = loss_bag
 
-            return loss
+        return loss, f'{cnt_over_thresh}/{cnt_positive}'
     
     model.train()
     for i, (images, target) in enumerate(train_loader):
@@ -161,17 +166,18 @@ def train(train_loader, model, criterion_mean, criterion_none, optimizer, schedu
         optimizer.zero_grad()
         # with torch.cuda.amp.autocast():
         enable_running_stats(model)
-        loss = train_single(model=model, images=images, target=target, epoch=epoch)
+        loss, cnt1 = train_single(model=model, images=images, target=target, epoch=epoch)
         loss.backward()
         optimizer.first_step(zero_grad=True)
 
         # Second step
         optimizer.zero_grad()
         disable_running_stats(model)
-        loss = train_single(model=model, images=images, target=target, epoch=epoch)
+        loss, cnt2 = train_single(model=model, images=images, target=target, epoch=epoch)
         loss.backward()
         optimizer.second_step(zero_grad=True)
         scheduler.step()
+        print(f'[1]: {cnt1}, [2]: {cnt2}')
 
 def validate(val_loader, model, criterion, args):
     bag_labels = []
@@ -206,34 +212,43 @@ if __name__ == '__main__':
     txt_name = f'Transformer_Transpose_{datetime.today().strftime("%m%d")}_{args.dataset}_{args.pretrain_type}_epoch{args.epochs}_wd{args.weight_decay}_scheduler_{args.scheduler}_'+\
     f'thresh_{args.pseudo_prob_threshold}_semiepoch_{args.semi_start_epoch}_share_{args.share_proj}_nl_{args.num_layers}'
     
-    acc_fold = []
-    auc_fold = []
+    acc_fold_val = []
+    auc_fold_val = []
+    acc_fold_tr = []
+    auc_fold_tr = []
 
     args.num_classes=2 if args.dataset=='tcga_lung' else 1
     args.device = 0
 
     t_start = time.time()
     for fold_num in range(1, args.fold+1):
-        _auc, _acc, category_idx = run_fold(args, fold_num)
-        acc_fold.append(_acc)
-        auc_fold.append(_auc)
+        auc_val, acc_val, category_idx, auc_tr, acc_tr  = run_fold(args, fold_num)
+        acc_fold_val.append(acc_val)
+        auc_fold_val.append(auc_val)
+        acc_fold_tr.append(acc_tr)
+        auc_fold_tr.append(auc_tr)
 
     print(f'Training took {round(time.time() - t_start, 3)} seconds')
     
     for fold_num in range(1, args.fold+1):
-        print(f'Fold {fold_num}: ACC({acc_fold[fold_num-1]}), AUC({auc_fold[fold_num-1]})')
+        print(f'<TR> Fold {fold_num}: ACC({acc_fold_tr[fold_num-1]}), AUC({auc_fold_tr[fold_num-1]})')
+        print(f'<Val> Fold {fold_num}: ACC({acc_fold_val[fold_num-1]}), AUC({auc_fold_val[fold_num-1]})')
     print(f'{args.fold} folds average')
-    auc_fold = np.mean(auc_fold, axis=0)
+    auc_fold_tr = np.mean(auc_fold_tr, axis=0)
+    auc_fold_val = np.mean(auc_fold_val, axis=0)
     
     with open(txt_name + '.txt', 'a' if os.path.isfile(txt_name + '.txt') else 'w') as f:
-        f.write(f'==== LR-pretrain: {args.pretrain_type} || LR-down: {args.lr} || Optimizer: {args.optimizer}+SAM || scheduler: {args.scheduler} || ')
+        f.write(f'==== LR-pretrain: {args.pretrain_type} || LR-down: {args.lr} || Optimizer: {args.optimizer}+SAM || scheduler: {args.scheduler} ||\n')
         
         if args.num_classes == 1:
-            f.write(f'AUC: {auc_fold[0]}\n')
+            f.write(f'AUC-TR: {auc_fold_tr[0]}\n')
+            f.write(f'AUC-Val: {auc_fold_val[0]}\n')
         elif args.num_classes == 2:
             for i, k in enumerate(category_idx.keys()):
-                f.write(f'AUC ({k}): {auc_fold[i]}\n')
-        f.write(f'ACC: {sum(acc_fold)/float(len(acc_fold))}\n')
+                f.write(f'AUC-TR ({k}): {auc_fold_tr[i]}\n')
+                f.write(f'AUC-Val ({k}): {auc_fold_val[i]}\n')
+        f.write(f'ACC-TR: {sum(acc_fold_tr)/float(len(acc_fold_tr))}\n')
+        f.write(f'ACC-Val: {sum(acc_fold_val)/float(len(acc_fold_val))}\n')
         f.write(f'==========================================================================================\n\n\n')
 
     if args.pushtoken:
