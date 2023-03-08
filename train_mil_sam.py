@@ -45,12 +45,12 @@ parser.add_argument('--seed', default=1, type=int, help='seed for initializing t
 
 parser.add_argument('--dataset', default='tcga_stad', choices=['CAMELYON16', 'tcga_lung', 'tcga_stad'], type=str, help='dataset type')
 parser.add_argument('--pretrain-type', default='simclr_lr1', help='weight folder')
-parser.add_argument('--epochs', default=100, type=int, metavar='N', help='number of total epochs to run')
+parser.add_argument('--epochs', default=3, type=int, metavar='N', help='number of total epochs to run')
 parser.add_argument('--optimizer', default='sgd', choices=['sgd', 'adam', 'adamw'], type=str, help='optimizer')
 parser.add_argument('--lr', default=0.1, type=float, metavar='LR', help='initial learning rate', dest='lr')
 # DTFD: 1e-4, TransMIL: 1e-5
 parser.add_argument('--wd', '--weight-decay', default=1e-4, type=float, metavar='W', help='weight decay (default: 1e-4)', dest='weight_decay')
-parser.add_argument('--mil-model', default='MilBase', choices=['MilBase'], type=str, help='use pre-training method')
+parser.add_argument('--mil-model', default='GatedAttention', choices=[ 'milmax', 'milmean', 'Attention', 'GatedAttention'], type=str, help='use pre-training method')
 
 
 parser.add_argument('--pushtoken', default=False, help='Push Bullet token')
@@ -63,8 +63,8 @@ def run_fold(args, fold) -> Tuple:
     torch.backends.cudnn.benchmark = True
     # cudnn.deterministic = True
 
-    model = milmodels.__dict__[args.mil_model](dim_out=args.num_classes).cuda() 
-
+    model = milmodels.__dict__[args.mil_model](dim_in=2048, dim_latent=512, dim_out=args.num_classes).cuda()
+    
     if args.loss == 'bce':
         criterion = nn.BCEWithLogitsLoss().cuda()
 # ['adam', 'sgd', 'adamw', 'swa', 'sam']
@@ -91,7 +91,7 @@ def run_fold(args, fold) -> Tuple:
         scheduler = CosineAnnealingWarmUpRestarts(optimizer, eta_max=args.lr, step_total=args.epochs * len(loader_train))
     scaler = torch.cuda.amp.GradScaler()
 
-    for epoch in trange(1, args.epochs):        
+    for epoch in trange(1, (args.epochs+1)):        
         train(loader_train, model, criterion, optimizer, scheduler, scaler)
     auc, acc = validate(loader_val, model, criterion, args)
     
@@ -109,9 +109,10 @@ def train(train_loader, model, criterion, optimizer, scheduler, scaler):
         optimizer.zero_grad()
         # with torch.cuda.amp.autocast():
             # output --> #bags x #classes
-        enable_running_stats(model)
-        output = model(images)
-        loss = criterion(output, target)
+        # enable_running_stats(model)
+        # output = model(images)
+        # loss = criterion(output, target)
+        loss = model.calculate_objective(images, target)
         loss.backward()
         optimizer.first_step(zero_grad=True)
 
@@ -120,11 +121,11 @@ def train(train_loader, model, criterion, optimizer, scheduler, scaler):
         # with torch.cuda.amp.autocast():
             # output --> #bags x #classes
         disable_running_stats(model)
-        output = model(images)
-        loss = criterion(output, target)
+        # output = model(images)
+        # loss = criterion(output, target)
+        loss = model.calculate_objective(images, target)
         loss.backward()
         optimizer.second_step(zero_grad=True)
-
 
         scheduler.step()
 
@@ -142,9 +143,9 @@ def validate(val_loader, model, criterion, args):
             
             with torch.cuda.amp.autocast():
                 # output --> #bags X #classes
-                output = model(images)
+                logit_bag, _ = model(images)
             #classes  (prob)
-            bag_predictions.append(torch.sigmoid(output.type(torch.DoubleTensor)).squeeze(0).cpu().numpy())
+            bag_predictions.append(torch.sigmoid(logit_bag.type(torch.DoubleTensor)).squeeze(0).cpu().numpy())
 
         # bag_labels --> #classes
         bag_labels = np.array(bag_labels)
@@ -158,7 +159,7 @@ def validate(val_loader, model, criterion, args):
 if __name__ == '__main__':
     args = parser.parse_args()
     # txt_name = f'{args.dataset}_{args.pretrain_type}_downstreamLR_{args.lr}_optimizer_{args.optimizer}_epoch{args.epochs}_wd{args.weight_decay}'
-    txt_name = f'{datetime.today().strftime("%m%d")}_{args.dataset}_{args.pretrain_type}_epoch{args.epochs}_wd{args.weight_decay}_scheduler_{args.scheduler}'
+    txt_name = f'{datetime.today().strftime("%m%d")}_{args.dataset}_{args.pretrain_type}_mil_model_{args.mil_model}_epoch{args.epochs}_wd{args.weight_decay}_scheduler_{args.scheduler}'
 
     acc_fold = []
     auc_fold = []

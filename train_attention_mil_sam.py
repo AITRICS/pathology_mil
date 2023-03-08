@@ -29,6 +29,7 @@ from utils.bypass_bn import enable_running_stats, disable_running_stats
 import socket
 from datetime import datetime
 import torchvision
+import math
 
 model_names = sorted(name for name in models.__dict__
     if name.islower() and not name.startswith("__")
@@ -119,19 +120,27 @@ def run_fold(args, fold) -> Tuple:
     return auc_val, acc_val, dataset_val.category_idx, auc_tr, acc_tr 
 
 def train(train_loader, model, criterion_mean, criterion_none, optimizer, scheduler, scaler, func_prob, epoch):
-    def train_single(model, images, target, epoch):
-        cnt_positive=0
-        cnt_over_thresh=0
+    cnt_positive_1=0
+    cnt_over_thresh_1=0
+    cnt_positive_2=0
+    cnt_over_thresh_2=0
+    def train_single(model, images, target, epoch, cnt_positive, cnt_over_thresh, criterion_mean, criterion_none):
         # logit_bag --> #bags x #classes
         # logit_instance --> #bags x #patches x #classes
         logit_bag, logit_instance = model(images)
+        # logit_bag += (39./252.)
+        # logit_instance += (39./252.)
         # loss_bag = criterion_mean(logit_bag.squeeze(1), target)
-        loss_bag = torchvision.ops.sigmoid_focal_loss(logit_bag, target, reduction='mean')
+
+        # loss_bag = torchvision.ops.sigmoid_focal_loss(logit_bag+math.log(39./252.), target, reduction='mean')
+        loss_bag = criterion_mean(logit_bag+math.log(39./252.), target)
 
         if epoch >= args.semi_start_epoch:
+        # if True:
             # lung 이면 코드 수정해야함. #bags=1 일때만 돌아감!!!
             if target == 0:
-                loss_instance = torchvision.ops.sigmoid_focal_loss(logit_instance, target.unsqueeze(1).repeat(logit_instance.size(0), logit_instance.size(1), logit_instance.size(2)), reduction='mean')
+                # loss_instance = torchvision.ops.sigmoid_focal_loss(logit_instance+math.log(39./252.), target.unsqueeze(1).repeat(logit_instance.size(0), logit_instance.size(1), logit_instance.size(2)), reduction='mean')
+                loss_instance = criterion_mean(logit_instance+math.log(39./252.), target.unsqueeze(1).repeat(logit_instance.size(0), logit_instance.size(1), logit_instance.size(2)))
             else:
                 cnt_positive+=1
                 #slide x #patches x num_class
@@ -144,16 +153,18 @@ def train(train_loader, model, criterion_mean, criterion_none, optimizer, schedu
                 mask = pseudo_label_positive.detach().clone()
                 mask[prob_instance<(1.0-args.pseudo_prob_threshold)]=1.0
                 if (torch.sum(pseudo_label_positive) < 1):
-                    loss_instance = torchvision.ops.sigmoid_focal_loss(torch.max(logit_instance), torch.ones([], device=args.device))
+                    # loss_instance = torchvision.ops.sigmoid_focal_loss(torch.max(logit_instance)+math.log(39./252.), torch.ones([], device=args.device))
+                    loss_instance = criterion_mean(torch.max(logit_instance)+math.log(39./252.), torch.ones([], device=args.device))
                 else:
-                    loss_instance = torch.sum(mask * torchvision.ops.sigmoid_focal_loss(logit_instance, pseudo_label_positive))/torch.sum(mask)
+                    # loss_instance = torch.sum(mask * torchvision.ops.sigmoid_focal_loss(logit_instance+math.log(39./252.), pseudo_label_positive))/torch.sum(mask)
+                    loss_instance = torch.sum(mask * criterion_none(logit_instance+math.log(39./252.), pseudo_label_positive))/torch.sum(mask)
                     cnt_over_thresh+=1
         
             loss = loss_bag + loss_instance
         else:
             loss = loss_bag
 
-        return loss, f'{cnt_over_thresh}/{cnt_positive}'
+        return loss, cnt_positive, cnt_over_thresh
     
     model.train()
     for i, (images, target) in enumerate(train_loader):
@@ -166,18 +177,18 @@ def train(train_loader, model, criterion_mean, criterion_none, optimizer, schedu
         optimizer.zero_grad()
         # with torch.cuda.amp.autocast():
         enable_running_stats(model)
-        loss, cnt1 = train_single(model=model, images=images, target=target, epoch=epoch)
+        loss, cnt_positive_1, cnt_over_thresh_1 = train_single(model=model, images=images, target=target, epoch=epoch, cnt_positive=cnt_positive_1, cnt_over_thresh=cnt_over_thresh_1, criterion_mean=criterion_mean, criterion_none=criterion_none)
         loss.backward()
         optimizer.first_step(zero_grad=True)
 
         # Second step
         optimizer.zero_grad()
         disable_running_stats(model)
-        loss, cnt2 = train_single(model=model, images=images, target=target, epoch=epoch)
+        loss, cnt_positive_2, cnt_over_thresh_2 = train_single(model=model, images=images, target=target, epoch=epoch, cnt_positive=cnt_positive_2, cnt_over_thresh=cnt_over_thresh_2, criterion_mean=criterion_mean, criterion_none=criterion_none)
         loss.backward()
         optimizer.second_step(zero_grad=True)
         scheduler.step()
-        print(f'[1]: {cnt1}, [2]: {cnt2}')
+    print(f'[1]: {cnt_over_thresh_1}/{cnt_positive_1}, [2]: {cnt_over_thresh_2}/{cnt_positive_2}')
 
 def validate(val_loader, model, criterion, args):
     bag_labels = []
