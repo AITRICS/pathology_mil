@@ -84,9 +84,9 @@ class dsmil(nn.Module):
         self.dim_out = dim_out
         self.criterion = nn.BCEWithLogitsLoss()
         
-        self.i_classifier = FCLayer(in_size=self.dim_in, out_size=self.dim_out).cuda()
-        self.b_classifier = BClassifier(input_size=self.dim_in, output_class=self.dim_out).cuda()
-        self.milnet = MILNet(self.i_classifier, self.b_classifier).cuda()
+        self.i_classifier = FCLayer(in_size=self.dim_in, out_size=self.dim_out)
+        self.b_classifier = BClassifier(input_size=self.dim_in, output_class=self.dim_out)
+        self.milnet = MILNet(self.i_classifier, self.b_classifier)
         
     def forward(self, x: torch.Tensor):
         dsmil_input = x.squeeze(0)
@@ -95,7 +95,7 @@ class dsmil(nn.Module):
     
     def calculate_objective(self, X, Y):
         logit_bag, logit_instance = self.forward(X)
-        max_prediction, _ = torch.max(logit_instance, 0)        # (n)
+        max_prediction, _ = torch.max(logit_instance, 1)        # (1,n)
         bag_loss = self.criterion(logit_bag.view(1, -1), Y.view(1, -1)) # num class n : BCE([1,n],[1,n])
         max_loss = self.criterion(max_prediction.view(1, -1), Y.view(1, -1))
         

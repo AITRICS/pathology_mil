@@ -43,14 +43,14 @@ parser.add_argument('-b', '--batch-size', default=1, type=int, metavar='N', help
 parser.add_argument('--momentum', default=0.9, type=float, help='sgd momentum')
 parser.add_argument('--seed', default=1, type=int, help='seed for initializing training. ')
 
-parser.add_argument('--dataset', default='tcga_stad', choices=['CAMELYON16', 'tcga_lung', 'tcga_stad'], type=str, help='dataset type')
+parser.add_argument('--dataset', default='CAMELYON16', choices=['CAMELYON16', 'tcga_lung', 'tcga_stad'], type=str, help='dataset type')
 parser.add_argument('--pretrain-type', default='simclr_lr1', help='weight folder')
 parser.add_argument('--epochs', default=3, type=int, metavar='N', help='number of total epochs to run')
 parser.add_argument('--optimizer', default='sgd', choices=['sgd', 'adam', 'adamw'], type=str, help='optimizer')
 parser.add_argument('--lr', default=0.1, type=float, metavar='LR', help='initial learning rate', dest='lr')
 # DTFD: 1e-4, TransMIL: 1e-5
 parser.add_argument('--wd', '--weight-decay', default=1e-4, type=float, metavar='W', help='weight decay (default: 1e-4)', dest='weight_decay')
-parser.add_argument('--mil-model', default='GatedAttention', choices=[ 'milmax', 'milmean', 'Attention', 'GatedAttention'], type=str, help='use pre-training method')
+parser.add_argument('--mil-model', default='milrnn', choices=[ 'milmax', 'milmean', 'Attention', 'GatedAttention','dsmil','milrnn'], type=str, help='use pre-training method')
 
 
 parser.add_argument('--pushtoken', default=False, help='Push Bullet token')
