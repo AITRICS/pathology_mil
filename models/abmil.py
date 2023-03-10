@@ -33,6 +33,7 @@ class Attention(nn.Module):
         self.classifier = nn.Sequential(
             nn.Linear(self.L, 1)
         )
+        self.criterion = nn.BCEWithLogitsLoss()
 
     def forward(self, x):
         # INPUT: #bags x #instances x #dims
@@ -72,12 +73,13 @@ class Attention(nn.Module):
         Y = Y.float()
         # Y_prob, _, A = self.forward(X)
         logit_bag, _ = self.forward(X)
-        Y_prob = F.sigmoid(logit_bag)
-        Y_prob = torch.clamp(Y_prob, min=1e-5, max=1. - 1e-5)
-        neg_log_likelihood = -1. * (Y * torch.log(Y_prob) + (1. - Y) * torch.log(1. - Y_prob))  # negative log bernoulli
+        loss = self.criterion(logit_bag, Y)
+        # Y_prob = F.sigmoid(logit_bag)
+        # Y_prob = torch.clamp(Y_prob, min=1e-5, max=1. - 1e-5)
+        # neg_log_likelihood = -1. * (Y * torch.log(Y_prob) + (1. - Y) * torch.log(1. - Y_prob))  # negative log bernoulli
 
         # return neg_log_likelihood, A
-        return neg_log_likelihood
+        return loss
 
 class GatedAttention(nn.Module):
     def __init__(self, dim_in:int=2048, dim_latent: int= 512, dim_out = 1):
@@ -117,6 +119,7 @@ class GatedAttention(nn.Module):
             nn.Linear(self.L, 1),
             # nn.Sigmoid()
         )
+        self.criterion = nn.BCEWithLogitsLoss()
 
     def forward(self, x):
         # INPUT: #bags x #instances x #dims
@@ -155,8 +158,10 @@ class GatedAttention(nn.Module):
     def calculate_objective(self, X, Y):
         Y = Y.float()
         logit_bag, _ = self.forward(X)
-        Y_prob = F.sigmoid(logit_bag)
-        Y_prob = torch.clamp(Y_prob, min=1e-5, max=1. - 1e-5)
-        neg_log_likelihood = -1. * (Y * torch.log(Y_prob) + (1. - Y) * torch.log(1. - Y_prob))  # negative log bernoulli
+        loss = self.criterion(logit_bag, Y)
+        return loss
+        # Y_prob = F.sigmoid(logit_bag)
+        # Y_prob = torch.clamp(Y_prob, min=1e-5, max=1. - 1e-5)
+        # neg_log_likelihood = -1. * (Y * torch.log(Y_prob) + (1. - Y) * torch.log(1. - Y_prob))  # negative log bernoulli
 
-        return neg_log_likelihood
+        # return neg_log_likelihood
