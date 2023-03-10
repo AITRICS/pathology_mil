@@ -191,7 +191,8 @@ if __name__ == '__main__':
         f.write(f'==========================================================================================\n\n\n')
     
     if args.pushtoken:
-        from pushbullet import Pushbullet
+        from pushbullet import API
         import socket
-        pb = Pushbullet(args.pushtoken)
-        push = pb.push_note('MIL train finished', f'{socket.gethostname()}')
+        pb = API()
+        pb.set_token(args.pushtoken)
+        push = pb.send_note('MIL train finished', f'{socket.gethostname()}')
