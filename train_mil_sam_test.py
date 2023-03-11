@@ -44,10 +44,10 @@ parser.add_argument('--momentum', default=0.9, type=float, help='sgd momentum')
 parser.add_argument('--seed', default=1, type=int, help='seed for initializing training. ')
 
 parser.add_argument('--dataset', default='tcga_stad', choices=['CAMELYON16', 'tcga_lung', 'tcga_stad'], type=str, help='dataset type')
-parser.add_argument('--pretrain-type', default='simclr_lr1', help='weight folder')
-parser.add_argument('--epochs', default=3, type=int, metavar='N', help='number of total epochs to run')
+parser.add_argument('--pretrain-type', default='ImageNet_Res50', help='weight folder')
+parser.add_argument('--epochs', default=2, type=int, metavar='N', help='number of total epochs to run')
 parser.add_argument('--optimizer', default='sgd', choices=['sgd', 'adam', 'adamw'], type=str, help='optimizer')
-parser.add_argument('--lr', default=0.1, type=float, metavar='LR', help='initial learning rate', dest='lr')
+parser.add_argument('--lr', default=0.001, type=float, metavar='LR', help='initial learning rate', dest='lr')
 # DTFD: 1e-4, TransMIL: 1e-5
 parser.add_argument('--wd', '--weight-decay', default=1e-4, type=float, metavar='W', help='weight decay (default: 1e-4)', dest='weight_decay')
 parser.add_argument('--mil-model', default='dsmil', choices=[ 'milmax', 'milmean', 'Attention', 'GatedAttention','dsmil','milrnn'], type=str, help='use pre-training method')
@@ -93,7 +93,7 @@ def run_fold(args, fold, txt_name) -> Tuple:
 
     auc_best = 0.0
     epoch_best = 0
-    file_name = f'{txt_name}_lr{args.lr}_fold{fold}.pth'
+    file_name = f'{txt_name}_lr{args.lr}_op_{args.optimizer}_fold{fold}.pth'
     for epoch in trange(1, (args.epochs+1)):        
         train(loader_train, model, criterion, optimizer, scheduler, scaler)
         auc_val, _ = validate(loader_val, model, criterion, args)
@@ -106,12 +106,12 @@ def run_fold(args, fold, txt_name) -> Tuple:
     dataset_test = Dataset_pkl(path_fold_pkl='hello my name is test', path_pretrained_pkl_root=os.path.join(args.data_root, 'features', args.dataset, args.pretrain_type), fold_now=999, fold_all=9999, shuffle_slide=False, shuffle_patch=False, split='test', num_classes=args.num_classes, seed=args.seed)
     loader_test = torch.utils.data.DataLoader(dataset_test, batch_size=args.batch_size, shuffle=False, num_workers=args.workers, pin_memory=True)
     
-    checkpoint = torch.load(file_name, map_location='cuda:{0}')
+    checkpoint = torch.load(file_name, map_location='cuda:0')
     model.load_state_dict(checkpoint['state_dict'])
     os.remove(file_name)
 
     auc, acc = validate(loader_test, model, criterion, args)
-    del dataset_test, loader_test
+    
     return auc, acc, dataset_test.category_idx, epoch_best
 
 def train(train_loader, model, criterion, optimizer, scheduler, scaler):
