@@ -50,7 +50,7 @@ parser.add_argument('--optimizer', default='sgd', choices=['sgd', 'adam', 'adamw
 parser.add_argument('--lr', default=0.001, type=float, metavar='LR', help='initial learning rate', dest='lr')
 # DTFD: 1e-4, TransMIL: 1e-5
 parser.add_argument('--wd', '--weight-decay', default=1e-4, type=float, metavar='W', help='weight decay (default: 1e-4)', dest='weight_decay')
-parser.add_argument('--mil-model', default='dsmil', choices=[ 'milmax', 'milmean', 'Attention', 'GatedAttention','dsmil','milrnn'], type=str, help='use pre-training method')
+parser.add_argument('--mil-model', default='milmax', choices=[ 'milmax', 'milmean', 'Attention', 'GatedAttention','dsmil','milrnn'], type=str, help='use pre-training method')
 
 
 parser.add_argument('--pushtoken', default=False, help='Push Bullet token')
@@ -91,14 +91,17 @@ def run_fold(args, fold, txt_name) -> Tuple:
         scheduler = CosineAnnealingWarmUpRestarts(optimizer, eta_max=args.lr, step_total=args.epochs * len(loader_train))
     scaler = torch.cuda.amp.GradScaler()
 
+    acc_best = 0.0
     auc_best = 0.0
     epoch_best = 0
     file_name = f'{txt_name}_lr{args.lr}_op_{args.optimizer}_fold{fold}.pth'
     for epoch in trange(1, (args.epochs+1)):        
         train(loader_train, model, criterion, optimizer, scheduler, scaler)
-        auc_val, _ = validate(loader_val, model, criterion, args)
+        auc_val, acc_val = validate(loader_val, model, criterion, args)
         if auc_val > auc_best:
             epoch_best = epoch
+            acc_best = acc_val
+            auc_best = auc_val
             torch.save({'state_dict': model.state_dict()}, file_name)
     
     del dataset_train, loader_train, dataset_val, loader_val, optimizer, scheduler
@@ -110,9 +113,9 @@ def run_fold(args, fold, txt_name) -> Tuple:
     model.load_state_dict(checkpoint['state_dict'])
     os.remove(file_name)
 
-    auc, acc = validate(loader_test, model, criterion, args)
+    auc_test, acc_test = validate(loader_test, model, criterion, args)
     
-    return auc, acc, dataset_test.category_idx, epoch_best
+    return auc_test, acc_test, auc_best, acc_best, dataset_test.category_idx, epoch_best
 
 def train(train_loader, model, criterion, optimizer, scheduler, scaler):
     model.train()
@@ -178,34 +181,44 @@ if __name__ == '__main__':
     # txt_name = f'{args.dataset}_{args.pretrain_type}_downstreamLR_{args.lr}_optimizer_{args.optimizer}_epoch{args.epochs}_wd{args.weight_decay}'
     txt_name = f'{datetime.today().strftime("%m%d")}_{args.dataset}_{args.pretrain_type}_mil_model_{args.mil_model}_epoch{args.epochs}_wd{args.weight_decay}_scheduler_{args.scheduler}'
 
-    acc_fold = []
-    auc_fold = []
+    acc_fold_val = []
+    auc_fold_val = []
+
+    acc_fold_test = []
+    auc_fold_test = []
 
     args.num_classes=2 if args.dataset=='tcga_lung' else 1
     args.device = 0
 
     t_start = time.time()
     for fold_num in range(1, args.fold+1):
-        _auc, _acc, category_idx, epoch_best = run_fold(args, fold_num, txt_name)
-        acc_fold.append(_acc)
-        auc_fold.append(_auc)
+        auc_test, acc_test, auc_val, acc_val, category_idx, epoch_best = run_fold(args, fold_num, txt_name)
+        acc_fold_val.append(acc_val)
+        auc_fold_val.append(auc_val)
+        acc_fold_test.append(acc_test)
+        auc_fold_test.append(auc_test)
 
     print(f'Training took {round(time.time() - t_start, 3)} seconds')
     print(f'Best epoch: {epoch_best}')
     
     for fold_num in range(1, args.fold+1):
-        print(f'Fold {fold_num}: ACC({acc_fold[fold_num-1]}), AUC({auc_fold[fold_num-1]})')
+        print(f'Fold {fold_num}: ACC VAL({acc_fold_val[fold_num-1]}), AUC VAL({auc_fold_val[fold_num-1]})')
+        print(f'Fold {fold_num}: ACC TEST({acc_fold_test[fold_num-1]}), AUC TEST({auc_fold_test[fold_num-1]})')
     print(f'{args.fold} folds average')
-    auc_fold = np.mean(auc_fold, axis=0)
+    auc_fold_val = np.mean(auc_fold_val, axis=0)
+    auc_fold_test = np.mean(auc_fold_test, axis=0)
     
     with open(txt_name + '.txt', 'a' if os.path.isfile(txt_name + '.txt') else 'w') as f:
         f.write(f'===================== LR-pretrain: {args.pretrain_type} || LR-down: {args.lr} || Optimizer: {args.optimizer}+SAM || scheduler: {args.scheduler} =======================\n')
         if args.num_classes == 1:
-            f.write(f'AUC: {auc_fold[0]}\n')
+            f.write(f'AUC VAL: {auc_fold_val[0]}\n')
+            f.write(f'AUC TEST: {auc_fold_test[0]}\n')
         elif args.num_classes == 2:
             for i, k in enumerate(category_idx.keys()):
-                f.write(f'AUC ({k}): {auc_fold[i]}\n')
-        f.write(f'ACC: {sum(acc_fold)/float(len(acc_fold))}\n')
+                f.write(f'AUC VAL({k}): {auc_fold_val[i]}\n')
+                f.write(f'AUC TEST({k}): {auc_fold_test[i]}\n')
+        f.write(f'ACC VAL: {sum(acc_fold_val)/float(len(acc_fold_val))}\n')
+        f.write(f'ACC TEST: {sum(acc_fold_test)/float(len(acc_fold_test))}\n')
         f.write(f'==========================================================================================\n\n\n')
     
     if args.pushtoken:
