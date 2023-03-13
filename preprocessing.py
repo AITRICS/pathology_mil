@@ -5,7 +5,7 @@ from itertools import repeat
 import argparse
 import glob
 import openslide
-import cucim
+import cucim 
 import cv2
 import math
 import numpy as np
