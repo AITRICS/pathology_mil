@@ -43,7 +43,7 @@ parser.add_argument('-b', '--batch-size', default=1, type=int, metavar='N', help
 parser.add_argument('--momentum', default=0.9, type=float, help='sgd momentum')
 parser.add_argument('--seed', default=1, type=int, help='seed for initializing training. ')
 
-parser.add_argument('--dataset', default='tcga_stad', choices=['CAMELYON16', 'tcga_lung', 'tcga_stad'], type=str, help='dataset type')
+parser.add_argument('--dataset', default='tcga_lung', choices=['CAMELYON16', 'tcga_lung', 'tcga_stad'], type=str, help='dataset type')
 parser.add_argument('--pretrain-type', default='ImageNet_Res50', help='weight folder')
 parser.add_argument('--epochs', default=2, type=int, metavar='N', help='number of total epochs to run')
 parser.add_argument('--optimizer', default='sgd', choices=['sgd', 'adam', 'adamw'], type=str, help='optimizer')
@@ -91,17 +91,17 @@ def run_fold(args, fold, txt_name) -> Tuple:
         scheduler = CosineAnnealingWarmUpRestarts(optimizer, eta_max=args.lr, step_total=args.epochs * len(loader_train))
     scaler = torch.cuda.amp.GradScaler()
 
-    acc_best = 0.0
     auc_best = 0.0
     epoch_best = 0
     file_name = f'{txt_name}_lr{args.lr}_op_{args.optimizer}_fold{fold}.pth'
     for epoch in trange(1, (args.epochs+1)):        
         train(loader_train, model, criterion, optimizer, scheduler, scaler)
-        auc_val, acc_val = validate(loader_val, model, criterion, args)
-        if auc_val > auc_best:
+        auc, acc = validate(loader_val, model, criterion, args)
+        if np.mean(auc) > auc_best:
             epoch_best = epoch
-            acc_best = acc_val
-            auc_best = auc_val
+            auc_best = np.mean(auc)
+            auc_val = auc
+            acc_val = acc
             torch.save({'state_dict': model.state_dict()}, file_name)
     
     del dataset_train, loader_train, dataset_val, loader_val, optimizer, scheduler
@@ -115,7 +115,7 @@ def run_fold(args, fold, txt_name) -> Tuple:
 
     auc_test, acc_test = validate(loader_test, model, criterion, args)
     
-    return auc_test, acc_test, auc_best, acc_best, dataset_test.category_idx, epoch_best
+    return auc_test, acc_test, auc_val, acc_val, dataset_test.category_idx, epoch_best
 
 def train(train_loader, model, criterion, optimizer, scheduler, scaler):
     model.train()
@@ -218,7 +218,9 @@ if __name__ == '__main__':
                 f.write(f'AUC VAL({k}): {auc_fold_val[i]}\n')
                 f.write(f'AUC TEST({k}): {auc_fold_test[i]}\n')
         f.write(f'ACC VAL: {sum(acc_fold_val)/float(len(acc_fold_val))}\n')
+        f.write(f'AUC VAL (Average): {np.mean(auc_fold_val)}\n')
         f.write(f'ACC TEST: {sum(acc_fold_test)/float(len(acc_fold_test))}\n')
+        f.write(f'AUC TEST (Average): {np.mean(auc_fold_test)}\n')
         f.write(f'==========================================================================================\n\n\n')
     
     if args.pushtoken:
