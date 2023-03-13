@@ -16,7 +16,8 @@ torchrun --standalone --nnodes=1 --nproc_per_node=$NUMBER_OF_GPUS_PER_NODE main.
 ## Installation
 
 ```
-conda create -n p1131 python=3.8
+conda update -n base -c defaults conda -y
+conda create -n p1131 python=3.8 -y
 conda install pytorch torchvision torchaudio pytorch-cuda=11.6 -c pytorch -c nvidia -y
 conda install -c anaconda scikit-learn -y
 conda install -c conda-forge tqdm -y
