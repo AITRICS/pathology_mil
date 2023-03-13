@@ -43,14 +43,14 @@ parser.add_argument('-b', '--batch-size', default=1, type=int, metavar='N', help
 parser.add_argument('--momentum', default=0.9, type=float, help='sgd momentum')
 parser.add_argument('--seed', default=1, type=int, help='seed for initializing training. ')
 
-parser.add_argument('--dataset', default='tcga_lung', choices=['CAMELYON16', 'tcga_lung', 'tcga_stad'], type=str, help='dataset type')
+parser.add_argument('--dataset', default='CAMELYON16', choices=['CAMELYON16', 'tcga_lung', 'tcga_stad'], type=str, help='dataset type')
 parser.add_argument('--pretrain-type', default='ImageNet_Res50', help='weight folder')
 parser.add_argument('--epochs', default=2, type=int, metavar='N', help='number of total epochs to run')
 parser.add_argument('--optimizer', default='sgd', choices=['sgd', 'adam', 'adamw'], type=str, help='optimizer')
 parser.add_argument('--lr', default=0.001, type=float, metavar='LR', help='initial learning rate', dest='lr')
 # DTFD: 1e-4, TransMIL: 1e-5
 parser.add_argument('--wd', '--weight-decay', default=1e-4, type=float, metavar='W', help='weight decay (default: 1e-4)', dest='weight_decay')
-parser.add_argument('--mil-model', default='milmax', choices=[ 'milmax', 'milmean', 'Attention', 'GatedAttention','dsmil','milrnn'], type=str, help='use pre-training method')
+parser.add_argument('--mil-model', default='dsmil', choices=[ 'milmax', 'milmean', 'Attention', 'GatedAttention','dsmil','milrnn'], type=str, help='use pre-training method')
 
 
 parser.add_argument('--pushtoken', default=False, help='Push Bullet token')
@@ -162,14 +162,14 @@ def validate(val_loader, model, criterion, args):
             images = images.cuda(args.device, non_blocking=True)
             
             with torch.cuda.amp.autocast():
-                # output --> #bags X #classes
+                # output --> #bags x #classes
                 logit_bag, _ = model(images)
             #classes  (prob)
             bag_predictions.append(torch.sigmoid(logit_bag.type(torch.DoubleTensor)).squeeze(0).cpu().numpy())
 
-        # bag_labels --> #classes
+        # bag_labels --> #bag x #classes
         bag_labels = np.array(bag_labels)
-        # bag_predictions --> #classes
+        # bag_predictions --> #bag x #classes
         bag_predictions = np.array(bag_predictions)
         assert len(bag_predictions.shape) == 2
         auc, acc = multi_label_roc(bag_labels, bag_predictions, num_classes=bag_labels.shape[-1], pos_label=1)
