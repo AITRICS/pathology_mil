@@ -20,7 +20,7 @@ def multi_label_roc(labels, predictions, num_classes, pos_label=1):
         prediction = predictions[:, c]
         fpr, tpr, threshold = roc_curve(label, prediction, pos_label=1)
         _, _, threshold_optimal = optimal_thresh(fpr, tpr, threshold)
-        c_auc = roc_auc_score(label, prediction)
+        c_auc = roc_auc_score(label, prediction) # label, prediction: numpy array, #bag || c_auc: scalar
         aucs.append(c_auc)
         # thresholds_optimal.append(threshold_optimal)
 
