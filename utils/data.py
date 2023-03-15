@@ -67,7 +67,7 @@ class Dataset_pkl(Dataset):
             self.path_pkl = pickle.load(open(os.path.join(path_fold_pkl, f'fold{fold_now}.pkl'), 'rb'))
         elif split == 'test':
             # self.path_pretrained_pkl = os.path.join(path_pretrained_pkl_root, 'test')
-            self.path_pkl = glob.glob(os.path.join(path_pretrained_pkl_root, f'test','*.pkl'))
+            self.path_pkl = glob.glob(os.path.join(path_pretrained_pkl_root, f'test','*', '*.pkl'))
             self.path_pkl.sort()
         
         if shuffle_slide:
