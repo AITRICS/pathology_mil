@@ -51,7 +51,7 @@ parser.add_argument('--optimizer', default='sgd', choices=['sgd', 'adam', 'adamw
 parser.add_argument('--lr', default=0.001, type=float, metavar='LR', help='initial learning rate', dest='lr')
 # DTFD: 1e-4, TransMIL: 1e-5
 parser.add_argument('--wd', '--weight-decay', default=1e-4, type=float, metavar='W', help='weight decay (default: 1e-4)', dest='weight_decay')
-parser.add_argument('--mil-model', default='Attention', choices=[ 'milmax', 'milmean', 'Attention', 'GatedAttention','dsmil','milrnn'], type=str, help='use pre-training method')
+parser.add_argument('--mil-model', default='monai.att_trans', choices=[ 'monai.max','monai.att','monai.att_trans','milmax', 'milmean', 'Attention', 'GatedAttention','dsmil','milrnn'], type=str, help='use pre-training method')
 
 
 parser.add_argument('--pushtoken', default=False, help='Push Bullet token')
@@ -63,8 +63,11 @@ def run_fold(args, fold, txt_name) -> Tuple:
     torch.cuda.manual_seed_all(args.seed)
     torch.backends.cudnn.benchmark = True
     # cudnn.deterministic = True
-
-    model = milmodels.__dict__[args.mil_model](dim_in=2048, dim_latent=512, dim_out=args.num_classes).cuda()
+    if 'monai' in args.mil_model:
+        mode = args.mil_model.split('.')[-1]
+        model = milmodels.__dict__['MonaiMil'](dim_in=2048, dim_latent=512, dim_out=args.num_classes, mil_mode=mode).cuda()
+    else :
+        model = milmodels.__dict__[args.mil_model](dim_in=2048, dim_latent=512, dim_out=args.num_classes).cuda()
     
     if args.loss == 'bce':
         criterion = nn.BCEWithLogitsLoss().cuda()

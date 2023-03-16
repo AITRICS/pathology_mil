@@ -34,7 +34,7 @@ class MonaiMil(nn.Module):
 
     """
 
-    def __init__(self,dim_in=2048, dim_latent=512, dim_out=1, mil_mode="att_trans") :
+    def __init__(self,dim_in=2048, dim_latent=512, dim_out=1, mil_mode="att") :
 
         super().__init__()
         self.mil_mode = mil_mode
@@ -43,26 +43,33 @@ class MonaiMil(nn.Module):
         self.dim_in = dim_in
         self.dim_latent = dim_latent 
         self.num_cls = dim_out
+        self.criterion = nn.BCEWithLogitsLoss()
+        
+        self.encoder = nn.Sequential(
+            # nn.Dropout(p=0.3),
+            nn.Linear(dim_in, dim_latent),
+            nn.ReLU(),
+        )
 
         if self.mil_mode in ["mean", "max"]:
             pass
         elif self.mil_mode == "att":
-            self.attention = nn.Sequential(nn.Linear(self.dim_in, 2048), nn.Tanh(), nn.Linear(2048, 1))
+            self.attention = nn.Sequential(nn.Linear(self.dim_latent, 2048), nn.Tanh(), nn.Linear(2048, 1))
 
         elif self.mil_mode in ["att_trans"]:
-            transformer = nn.TransformerEncoderLayer(d_model=self.dim_in, nhead=8, dropout=trans_dropout)
-            self.transformer = nn.TransformerEncoder(transformer, num_layers=trans_blocks)
+            transformer = nn.TransformerEncoderLayer(d_model=self.dim_latent, nhead=8, dropout=0)
+            self.transformer = nn.TransformerEncoder(transformer, num_layers=4)
             for i, (name, layer) in enumerate(self.transformer.named_children()):
                 if isinstance(layer, nn.ReLU):
                     setattr(self.transformer, name, nn.ReLU(inplace=False))
-            self.attention = nn.Sequential(nn.Linear(nfc, 2048), nn.Tanh(), nn.Linear(2048, 1))
+            self.attention = nn.Sequential(nn.Linear(self.dim_latent, 2048), nn.Tanh(), nn.Linear(2048, 1))
             
 
         else:
             raise ValueError("Unsupported mil_mode: " + str(mil_mode))
 
-        self.myfc = nn.Linear(nfc, num_classes)
-        self.scorefc= nn.Linear(nfc, num_classes)
+        self.myfc = nn.Linear(self.dim_latent, self.num_cls)
+        self.scorefc= nn.Linear(self.dim_latent, self.num_cls)
 
     def calc_head(self, x: torch.Tensor) -> torch.Tensor:
 
@@ -86,14 +93,14 @@ class MonaiMil(nn.Module):
 
         elif self.mil_mode == "att_trans" and self.transformer is not None:
 
-            x = x.permute(1, 0, 2) #permute 후 (n,b,512)
+            x = x.permute(1, 0, 2) #permute 후 (n,b,dim)
             x = self.transformer(x)
-            x = x.permute(1, 0, 2) # (b,n,512)
+            x = x.permute(1, 0, 2) # (b,n,dim)
 
-            a = self.attention(x) # att shape (b,n,1)
-            a = torch.softmax(a, dim=1) # att shape (b,n,1)
-            x = torch.sum(x * a, dim=1) # x*a shape (b,n,512) , sum 후 (b,512)
-            # myfc = nn.Linear(512, num_classes)
+            a = self.attention(x) # att shape (b,n,cls)
+            a = torch.softmax(a, dim=1) # att shape (b,n,cls)
+            x = torch.sum(x * a, dim=1) # x*a shape (b,n,dim) , sum 후 (b,dim)
+            # myfc = nn.Linear(dim, num_classes)
             x = self.myfc(x)
 
         else:
@@ -102,14 +109,13 @@ class MonaiMil(nn.Module):
         return x
 
     def forward(self, x: torch.Tensor, no_head: bool = False) -> torch.Tensor:
+        # input: #bags x #instances x #dims
+        x = self.encoder(x)
+        bag_logit = self.calc_head(x)
+        return bag_logit, None
 
-        sh = x.shape
-        x = x.reshape(sh[0] * sh[1], sh[2], sh[3], sh[4])
-
-        x = self.net(x)
-        x = x.reshape(sh[0], sh[1], -1)
+    def calculate_objective(self, X, Y):
+        bag_logit, _ = self.forward(X)
+        bag_loss = self.criterion(bag_logit,Y)
         
-        if not no_head:
-            x = self.calc_head(x)
-
-        return x
+        return bag_loss

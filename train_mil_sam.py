@@ -29,6 +29,10 @@ from utils.bypass_bn import enable_running_stats, disable_running_stats
 import socket
 from datetime import datetime
 
+
+from torch.cuda.amp import autocast
+from torch.cuda.amp import GradScaler
+
 model_names = sorted(name for name in models.__dict__
     if name.islower() and not name.startswith("__")
     and callable(models.__dict__[name]))
