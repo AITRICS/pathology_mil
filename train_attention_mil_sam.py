@@ -20,7 +20,7 @@ import torchvision.transforms as transforms
 from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import Subset
 from typing import Tuple
-from utils import adjust_learning_rate, loss, Dataset_pkl, CosineAnnealingWarmUpSingle, CosineAnnealingWarmUpRestarts, optimal_thresh, multi_label_roc, save_checkpoint
+from utils import adjust_learning_rate, loss, Dataset_pkl2, CosineAnnealingWarmUpSingle, CosineAnnealingWarmUpRestarts, optimal_thresh, multi_label_roc, save_checkpoint
 import models as milmodels
 from tqdm import tqdm, trange
 import numpy as np
@@ -47,7 +47,7 @@ parser.add_argument('--seed', default=1, type=int, help='seed for initializing t
 parser.add_argument('--save', default=False, type=bool)
 
 parser.add_argument('--dataset', default='tcga_stad', choices=['CAMELYON16', 'tcga_lung', 'tcga_stad'], type=str, help='dataset type')
-parser.add_argument('--pretrain-type', default='simclr_lr1', help='weight folder')
+parser.add_argument('--pretrain-type', default='ImageNet_Res50_newstat', help='weight folder')
 parser.add_argument('--epochs', default=4, type=int, metavar='N', help='number of total epochs to run')
 parser.add_argument('--optimizer', default='adamw', choices=['sgd', 'adam', 'adamw'], type=str, help='optimizer')
 parser.add_argument('--lr', default=0.0001, type=float, metavar='LR', help='initial learning rate', dest='lr')
@@ -69,7 +69,12 @@ def run_fold(args, fold) -> Tuple:
     torch.backends.cudnn.benchmark = True
     # cudnn.deterministic = True
 
-    model = milmodels.__dict__[args.mil_model](dim_out=args.num_classes, num_layers=args.num_layers, share_proj=args.share_proj).cuda() 
+    if 'Res18' in args.pretrain_type:
+        dim_in = 512
+    else:
+        dim_in = 2048
+
+    model = milmodels.__dict__[args.mil_model](dim_in=dim_in, dim_out=args.num_classes, num_layers=args.num_layers, share_proj=args.share_proj).cuda() 
 
     if args.loss == 'bce':
         # default: reduction: str = 'mean'
@@ -91,10 +96,10 @@ def run_fold(args, fold) -> Tuple:
     # https://github.com/davda54/sam
     optimizer = SAM(model.parameters(), optimizer_based, lr=args.lr, weight_decay=args.weight_decay, adaptive=True)
     
-    dataset_train = Dataset_pkl(path_fold_pkl=os.path.join(args.data_root, 'cv', args.dataset), path_pretrained_pkl_root=os.path.join(args.data_root, 'features', args.dataset, args.pretrain_type), fold_now=fold, fold_all=args.fold, shuffle_slide=True, shuffle_patch=True, split='train', num_classes=args.num_classes, seed=args.seed)
+    dataset_train = Dataset_pkl2(path_fold_pkl=os.path.join(args.data_root, 'cv', args.dataset), path_pretrained_pkl_root=os.path.join(args.data_root, 'features', args.dataset, args.pretrain_type), fold_now=fold, fold_all=args.fold, shuffle_slide=True, shuffle_patch=True, split='train', num_classes=args.num_classes, seed=args.seed)
     loader_train = torch.utils.data.DataLoader(dataset_train, batch_size=args.batch_size, shuffle=True, num_workers=args.workers, pin_memory=True)
     
-    dataset_val = Dataset_pkl(path_fold_pkl=os.path.join(args.data_root, 'cv', args.dataset), path_pretrained_pkl_root=os.path.join(args.data_root, 'features', args.dataset, args.pretrain_type), fold_now=fold, fold_all=args.fold, shuffle_slide=False, shuffle_patch=False, split='val', num_classes=args.num_classes, seed=args.seed)
+    dataset_val = Dataset_pkl2(path_fold_pkl=os.path.join(args.data_root, 'cv', args.dataset), path_pretrained_pkl_root=os.path.join(args.data_root, 'features', args.dataset, args.pretrain_type), fold_now=fold, fold_all=args.fold, shuffle_slide=False, shuffle_patch=False, split='val', num_classes=args.num_classes, seed=args.seed)
     loader_val = torch.utils.data.DataLoader(dataset_val, batch_size=args.batch_size, shuffle=False, num_workers=args.workers, pin_memory=True)
 
     # 고쳐야 하나..?
@@ -104,20 +109,33 @@ def run_fold(args, fold) -> Tuple:
         scheduler = CosineAnnealingWarmUpRestarts(optimizer, eta_max=args.lr, step_total=args.epochs * len(loader_train))
     scaler = torch.cuda.amp.GradScaler()
 
-    for epoch in trange(1, args.epochs):        
+    auc_best = 0.0
+    epoch_best = 0
+    file_name = f'{txt_name}_lr{args.lr}_op_{args.optimizer}_fold{fold}.pth'    
+    for epoch in trange(1, args.epochs+1):        
         train(loader_train, model, criterion_mean, criterion_none, optimizer, scheduler, scaler, func_prob, epoch)
-    auc_val, acc_val = validate(loader_val, model, criterion_mean, args)
-    auc_tr, acc_tr = validate(loader_train, model, criterion_mean, args)
+        auc, acc = validate(loader_val, model, args)
+        if np.mean(auc) > auc_best:
+            epoch_best = epoch
+            auc_best = np.mean(auc)
+            auc_val = auc
+            acc_val = acc
+            torch.save({'state_dict': model.state_dict()}, file_name)
+
+    dataset_test = Dataset_pkl2(path_fold_pkl='hello my name is test', path_pretrained_pkl_root=os.path.join(args.data_root, 'features', args.dataset, args.pretrain_type), fold_now=999, fold_all=9999, shuffle_slide=False, shuffle_patch=False, split='test', num_classes=args.num_classes, seed=args.seed)
+    loader_test = torch.utils.data.DataLoader(dataset_test, batch_size=args.batch_size, shuffle=False, num_workers=args.workers, pin_memory=True)
     
-    if args.save :
-        state_dict = model.state_dict()
-        save_dict = {"fold": fold, "val_acc": acc_val, "val_auc": auc_val, "state_dict": state_dict}
-        filename = f'dataset_{args.dataset}_pretrain_{args.pretrain_type}_lr_{args.lr}_fold_{fold}'
-        torch.save(save_dict, filename)
-        print("Saving checkpoint", filename)
+    checkpoint = torch.load(file_name, map_location='cuda:0')
+    model.load_state_dict(checkpoint['state_dict'])
+    os.remove(file_name)
+
+    auc_test, acc_test = validate(loader_test, model, args)
+    auc_tr, acc_tr = validate(loader_train, model, args)
+
+    del dataset_train, loader_train, dataset_val, loader_val, optimizer, scheduler
     
-    del model
-    return auc_val, acc_val, dataset_val.category_idx, auc_tr, acc_tr 
+    return auc_test, acc_test, auc_val, acc_val, auc_tr, acc_tr, dataset_test.category_idx, epoch_best
+
 
 def train(train_loader, model, criterion_mean, criterion_none, optimizer, scheduler, scaler, func_prob, epoch):
     cnt_positive_1=0
@@ -190,7 +208,7 @@ def train(train_loader, model, criterion_mean, criterion_none, optimizer, schedu
         scheduler.step()
     print(f'[1]: {cnt_over_thresh_1}/{cnt_positive_1}, [2]: {cnt_over_thresh_2}/{cnt_positive_2}')
 
-def validate(val_loader, model, criterion, args):
+def validate(val_loader, model, args):
     bag_labels = []
     bag_predictions = []
     model.eval()
@@ -204,13 +222,13 @@ def validate(val_loader, model, criterion, args):
             
             with torch.cuda.amp.autocast():
                 # output --> #bags x #classes
-                output, _ = model(images)
+                logit_bag, _ = model(images)
             #classes  (prob)
-            bag_predictions.append(torch.sigmoid(output.type(torch.DoubleTensor)).squeeze(0).cpu().numpy())
+            bag_predictions.append(torch.sigmoid(logit_bag.type(torch.DoubleTensor)).squeeze(0).cpu().numpy())
 
-        # bag_labels --> #classes
+        # bag_labels --> #bag x #classes
         bag_labels = np.array(bag_labels)
-        # bag_predictions --> #classes
+        # bag_predictions --> #bag x #classes
         bag_predictions = np.array(bag_predictions)
         assert len(bag_predictions.shape) == 2
         auc, acc = multi_label_roc(bag_labels, bag_predictions, num_classes=bag_labels.shape[-1], pos_label=1)
@@ -221,47 +239,63 @@ if __name__ == '__main__':
     args = parser.parse_args()
     # txt_name = f'{args.dataset}_{args.pretrain_type}_downstreamLR_{args.lr}_optimizer_{args.optimizer}_epoch{args.epochs}_wd{args.weight_decay}'
     txt_name = f'Transformer_Transpose_{datetime.today().strftime("%m%d")}_{args.dataset}_{args.pretrain_type}_epoch{args.epochs}_wd{args.weight_decay}_scheduler_{args.scheduler}_'+\
-    f'thresh_{args.pseudo_prob_threshold}_semiepoch_{args.semi_start_epoch}_share_{args.share_proj}_nl_{args.num_layers}'
+    f'thresh_{args.pseudo_prob_threshold}_semiepoch_{args.semi_start_epoch}_share_{args.share_proj}_nl_{args.num_layers}_SAM'
     
-    acc_fold_val = []
-    auc_fold_val = []
     acc_fold_tr = []
     auc_fold_tr = []
+
+    acc_fold_val = []
+    auc_fold_val = []
+
+    acc_fold_test = []
+    auc_fold_test = []
 
     args.num_classes=2 if args.dataset=='tcga_lung' else 1
     args.device = 0
 
     t_start = time.time()
     for fold_num in range(1, args.fold+1):
-        auc_val, acc_val, category_idx, auc_tr, acc_tr  = run_fold(args, fold_num)
-        acc_fold_val.append(acc_val)
-        auc_fold_val.append(auc_val)
+        auc_test, acc_test, auc_val, acc_val, auc_tr, acc_tr, category_idx, epoch_best = run_fold(args, fold_num)
+        
         acc_fold_tr.append(acc_tr)
         auc_fold_tr.append(auc_tr)
+        acc_fold_val.append(acc_val)
+        auc_fold_val.append(auc_val)
+        acc_fold_test.append(acc_test)
+        auc_fold_test.append(auc_test)
 
     print(f'Training took {round(time.time() - t_start, 3)} seconds')
+    print(f'Best epoch: {epoch_best}')
     
     for fold_num in range(1, args.fold+1):
-        print(f'<TR> Fold {fold_num}: ACC({acc_fold_tr[fold_num-1]}), AUC({auc_fold_tr[fold_num-1]})')
-        print(f'<Val> Fold {fold_num}: ACC({acc_fold_val[fold_num-1]}), AUC({auc_fold_val[fold_num-1]})')
+        print(f'Fold {fold_num}: ACC TR({acc_fold_tr[fold_num-1]}), AUC TR({auc_fold_tr[fold_num-1]})')
+        print(f'Fold {fold_num}: ACC VAL({acc_fold_val[fold_num-1]}), AUC VAL({auc_fold_val[fold_num-1]})')
+        print(f'Fold {fold_num}: ACC TEST({acc_fold_test[fold_num-1]}), AUC TEST({auc_fold_test[fold_num-1]})')
     print(f'{args.fold} folds average')
     auc_fold_tr = np.mean(auc_fold_tr, axis=0)
     auc_fold_val = np.mean(auc_fold_val, axis=0)
+    auc_fold_test = np.mean(auc_fold_test, axis=0)
     
     with open(txt_name + '.txt', 'a' if os.path.isfile(txt_name + '.txt') else 'w') as f:
         f.write(f'==== LR-pretrain: {args.pretrain_type} || LR-down: {args.lr} || Optimizer: {args.optimizer}+SAM || scheduler: {args.scheduler} ||\n')
         
         if args.num_classes == 1:
-            f.write(f'AUC-TR: {auc_fold_tr[0]}\n')
-            f.write(f'AUC-Val: {auc_fold_val[0]}\n')
+            f.write(f'AUC TR: {auc_fold_tr[0]}\n')
+            f.write(f'AUC VAL: {auc_fold_val[0]}\n')
+            f.write(f'AUC TEST: {auc_fold_test[0]}\n')
         elif args.num_classes == 2:
             for i, k in enumerate(category_idx.keys()):
-                f.write(f'AUC-TR ({k}): {auc_fold_tr[i]}\n')
-                f.write(f'AUC-Val ({k}): {auc_fold_val[i]}\n')
-        f.write(f'ACC-TR: {sum(acc_fold_tr)/float(len(acc_fold_tr))}\n')
-        f.write(f'ACC-Val: {sum(acc_fold_val)/float(len(acc_fold_val))}\n')
+                f.write(f'AUC TR({k}): {auc_fold_tr[i]}\n')
+                f.write(f'AUC VAL({k}): {auc_fold_val[i]}\n')
+                f.write(f'AUC TEST({k}): {auc_fold_test[i]}\n')
+        f.write(f'ACC TR: {sum(acc_fold_tr)/float(len(acc_fold_tr))}\n')
+        f.write(f'AUC TR (Average): {np.mean(auc_fold_tr)}\n')
+        f.write(f'ACC VAL: {sum(acc_fold_val)/float(len(acc_fold_val))}\n')
+        f.write(f'AUC VAL (Average): {np.mean(auc_fold_val)}\n')
+        f.write(f'ACC TEST: {sum(acc_fold_test)/float(len(acc_fold_test))}\n')
+        f.write(f'AUC TEST (Average): {np.mean(auc_fold_test)}\n')
         f.write(f'==========================================================================================\n\n\n')
-
+    
     if args.pushtoken:
         from pushbullet import API
         import socket

@@ -2,11 +2,14 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import math
+from typing import List
+import torch.optim as optim
+from utils import CosineAnnealingWarmUpSingle, CosineAnnealingWarmUpRestarts
 
 
 class MilBase(nn.Module):
 
-    def __init__(self, encoder=None, dim_in:int=2048, dim_latent: int= 512, dim_out = 1, pool = nn.AdaptiveMaxPool1d((1))):
+    def __init__(self, args, optimizer=None, criterion=None, scheduler=None, encoder=None, dim_in:int=2048, dim_latent: int= 512, dim_out = 1, pool = nn.AdaptiveMaxPool1d((1))):
         super().__init__()
 
         if encoder == None:
@@ -20,8 +23,28 @@ class MilBase(nn.Module):
 
         self.pool = pool
         self.score = nn.Linear(dim_latent, dim_out, bias=True)
-        self.criterion = nn.BCEWithLogitsLoss()
-    
+
+
+        if optimizer is not None:
+            self.optimizer = optimizer
+        else:
+            raise ValueError("dude this is your own model class, define optimizer then.")
+        
+        if criterion is not None:
+            self.criterion = criterion
+        else:
+            self.criterion = nn.BCEWithLogitsLoss()
+            
+        if scheduler is not None:
+            self.scheduler = scheduler
+        else:
+            if args.scheduler == 'single':
+                self.scheduler = CosineAnnealingWarmUpSingle(self.optimizer, max_lr=args.lr, epochs=args.epochs, steps_per_epoch=args.num_step)
+            elif args.scheduler == 'multi':
+                self.scheduler = CosineAnnealingWarmUpRestarts(self.optimizer, eta_max=args.lr, step_total=args.epochs*args.num_step)
+
+        self.scaler = torch.cuda.amp.GradScaler()
+
     def forward(self, x: torch.Tensor):
         
         x = self.encoder(x) # #slide x #patches x dim_latent
@@ -38,6 +61,22 @@ class MilBase(nn.Module):
         loss = self.criterion(logit_bag, Y)
 
         return loss
+
+    def update(self, X, Y):
+        """
+        X: #bags x #instances x #dims => encoded patches
+        Y: #bags x #classes  ==========> slide-level label        
+        """
+        
+        self.optimizer.zero_grad()
+        with torch.cuda.amp.autocast():
+            loss = self.calculate_objective(X, Y)
+
+        self.scaler.scale(loss).backward()
+        self.scaler.step(self.optimizer)
+        self.scaler.update()
+        if self.scheduler is not None:
+            self.scheduler.step() 
 
 # INPUT: #bags x #instances x #dims
 # OUTPUT: #bags x #classes
@@ -122,6 +161,24 @@ class MilTransformer(nn.Module):
 
         return loss
 
+    def update(self, X, Y):
+        """
+        X: #bags x #instances x #dims => encoded patches
+        Y: #bags x #classes  ==========> slide-level label        
+        """
+        
+        self.optimizer.zero_grad()
+        with torch.cuda.amp.autocast():
+            loss = self.calculate_objective(X, Y)
+
+        self.scaler.scale(loss).backward()
+        self.scaler.step(self.optimizer)
+        self.scaler.update()
+        if self.scheduler is not None:
+            self.scheduler.step()    
+    
+
+    
 # class MilTransformer_(nn.Module):
 
 #     def __init__(self, encoder=None, dim_in:int=2048, dim_latent: int= 512, dim_out = 1, num_heads=8, num_layers=3, share_proj=False):

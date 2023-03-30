@@ -20,7 +20,7 @@ import torchvision.transforms as transforms
 from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import Subset
 from typing import Tuple
-from utils import adjust_learning_rate, loss, Dataset_pkl, CosineAnnealingWarmUpSingle, CosineAnnealingWarmUpRestarts, optimal_thresh, multi_label_roc, save_checkpoint
+from utils import adjust_learning_rate, loss, Dataset_pkl2, CosineAnnealingWarmUpSingle, CosineAnnealingWarmUpRestarts, optimal_thresh, multi_label_roc, save_checkpoint
 import models as milmodels
 from tqdm import tqdm, trange
 import numpy as np
@@ -44,7 +44,7 @@ parser.add_argument('--momentum', default=0.9, type=float, help='sgd momentum')
 parser.add_argument('--seed', default=1, type=int, help='seed for initializing training. ')
 
 parser.add_argument('--dataset', default='CAMELYON16', choices=['CAMELYON16', 'tcga_lung', 'tcga_stad'], type=str, help='dataset type')
-parser.add_argument('--pretrain-type', default='ImageNet_Res50', help='weight folder')
+parser.add_argument('--pretrain-type', default='ImageNet_Res50_newstat', help='weight folder')
 # parser.add_argument('--pretrain-type', default='simclr_lr1', help='weight folder')
 parser.add_argument('--epochs', default=2, type=int, metavar='N', help='number of total epochs to run')
 parser.add_argument('--optimizer', default='sgd', choices=['sgd', 'adam', 'adamw'], type=str, help='optimizer')
@@ -64,7 +64,12 @@ def run_fold(args, fold, txt_name) -> Tuple:
     torch.backends.cudnn.benchmark = True
     # cudnn.deterministic = True
 
-    model = milmodels.__dict__[args.mil_model](dim_in=2048, dim_latent=512, dim_out=args.num_classes).cuda()
+    if 'Res18' in args.pretrain_type:
+        dim_in = 512
+    else:
+        dim_in = 2048
+        
+    model = milmodels.__dict__[args.mil_model](dim_in=dim_in, dim_latent=512, dim_out=args.num_classes).cuda()
     
     if args.loss == 'bce':
         criterion = nn.BCEWithLogitsLoss().cuda()
@@ -79,10 +84,10 @@ def run_fold(args, fold, txt_name) -> Tuple:
     # https://github.com/davda54/sam
     optimizer = SAM(model.parameters(), optimizer_based, lr=args.lr, weight_decay=args.weight_decay, adaptive=True)
     
-    dataset_train = Dataset_pkl(path_fold_pkl=os.path.join(args.data_root, 'cv', args.dataset), path_pretrained_pkl_root=os.path.join(args.data_root, 'features', args.dataset, args.pretrain_type), fold_now=fold, fold_all=args.fold, shuffle_slide=True, shuffle_patch=True, split='train', num_classes=args.num_classes, seed=args.seed)
+    dataset_train = Dataset_pkl2(path_fold_pkl=os.path.join(args.data_root, 'cv', args.dataset), path_pretrained_pkl_root=os.path.join(args.data_root, 'features', args.dataset, args.pretrain_type), fold_now=fold, fold_all=args.fold, shuffle_slide=True, shuffle_patch=True, split='train', num_classes=args.num_classes, seed=args.seed)
     loader_train = torch.utils.data.DataLoader(dataset_train, batch_size=args.batch_size, shuffle=True, num_workers=args.workers, pin_memory=True)
     
-    dataset_val = Dataset_pkl(path_fold_pkl=os.path.join(args.data_root, 'cv', args.dataset), path_pretrained_pkl_root=os.path.join(args.data_root, 'features', args.dataset, args.pretrain_type), fold_now=fold, fold_all=args.fold, shuffle_slide=False, shuffle_patch=False, split='val', num_classes=args.num_classes, seed=args.seed)
+    dataset_val = Dataset_pkl2(path_fold_pkl=os.path.join(args.data_root, 'cv', args.dataset), path_pretrained_pkl_root=os.path.join(args.data_root, 'features', args.dataset, args.pretrain_type), fold_now=fold, fold_all=args.fold, shuffle_slide=False, shuffle_patch=False, split='val', num_classes=args.num_classes, seed=args.seed)
     loader_val = torch.utils.data.DataLoader(dataset_val, batch_size=args.batch_size, shuffle=False, num_workers=args.workers, pin_memory=True)
 
     # 고쳐야 하나..?
@@ -106,7 +111,7 @@ def run_fold(args, fold, txt_name) -> Tuple:
             torch.save({'state_dict': model.state_dict()}, file_name)
     
 
-    dataset_test = Dataset_pkl(path_fold_pkl='hello my name is test', path_pretrained_pkl_root=os.path.join(args.data_root, 'features', args.dataset, args.pretrain_type), fold_now=999, fold_all=9999, shuffle_slide=False, shuffle_patch=False, split='test', num_classes=args.num_classes, seed=args.seed)
+    dataset_test = Dataset_pkl2(path_fold_pkl='hello my name is test', path_pretrained_pkl_root=os.path.join(args.data_root, 'features', args.dataset, args.pretrain_type), fold_now=999, fold_all=9999, shuffle_slide=False, shuffle_patch=False, split='test', num_classes=args.num_classes, seed=args.seed)
     loader_test = torch.utils.data.DataLoader(dataset_test, batch_size=args.batch_size, shuffle=False, num_workers=args.workers, pin_memory=True)
     
     checkpoint = torch.load(file_name, map_location='cuda:0')
@@ -117,6 +122,7 @@ def run_fold(args, fold, txt_name) -> Tuple:
     auc_tr, acc_tr = validate(loader_train, model, args)
 
     del dataset_train, loader_train, dataset_val, loader_val, optimizer, scheduler
+    print(f'fold [{fold}]: epoch_best ==> {epoch_best}')
     
     return auc_test, acc_test, auc_val, acc_val, auc_tr, acc_tr, dataset_test.category_idx, epoch_best
 

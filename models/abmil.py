@@ -1,10 +1,12 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
+from typing import List
+import torch.optim as optim
+from utils import CosineAnnealingWarmUpSingle, CosineAnnealingWarmUpRestarts
 
 class Attention(nn.Module):
-    def __init__(self, dim_in:int=2048, dim_latent: int= 512, dim_out = 1):
+    def __init__(self, args, optimizer=None, criterion=None, scheduler=None, dim_in:int=2048, dim_latent: int=512, dim_out: int=1):
         super(Attention, self).__init__()
         self.L = dim_latent
         self.D = 128
@@ -19,7 +21,7 @@ class Attention(nn.Module):
         #     nn.MaxPool2d(2, stride=2)
         # )
 
-        self.feature_extractor_part2 = nn.Sequential(
+        self.encoder = nn.Sequential(
             nn.Linear(dim_in, self.L),
             nn.ReLU(),
         )
@@ -33,7 +35,26 @@ class Attention(nn.Module):
         self.classifier = nn.Sequential(
             nn.Linear(self.L, 1)
         )
-        self.criterion = nn.BCEWithLogitsLoss()
+
+        if optimizer is not None:
+            self.optimizer = optimizer
+        else:
+            self.optimizer = optim.Adam(self.parameters(), lr=0, betas=(0.9, 0.999), weight_decay=args.weight_decay)
+        
+        if criterion is not None:
+            self.criterion = criterion
+        else:
+            self.criterion = nn.BCEWithLogitsLoss()
+            
+        if scheduler is not None:
+            self.scheduler = scheduler
+        else:
+            if args.scheduler == 'single':
+                self.scheduler = CosineAnnealingWarmUpSingle(self.optimizer, max_lr=args.lr, epochs=args.epochs, steps_per_epoch=args.num_step)
+            elif args.scheduler == 'multi':
+                self.scheduler = CosineAnnealingWarmUpRestarts(self.optimizer, eta_max=args.lr, step_total=args.epochs*args.num_step)
+
+        self.scaler = torch.cuda.amp.GradScaler()
 
     def forward(self, x):
         # INPUT: #bags x #instances x #dims
@@ -42,7 +63,7 @@ class Attention(nn.Module):
 
         # H = self.feature_extractor_part1(x)
         # H = H.view(-1, 50 * 4 * 4)
-        H = self.feature_extractor_part2(x)  # BxNxL
+        H = self.encoder(x)  # BxNxL
 # H: seq(=-1) x self.L,    seq=K
         A = self.attention(H)  # BxNxK
         # A = self.attention(x)  
@@ -70,7 +91,7 @@ class Attention(nn.Module):
     #     return error, Y_hat
 
     def calculate_objective(self, X, Y):
-        Y = Y.float()
+        # Y = Y.float()
         # Y_prob, _, A = self.forward(X)
         logit_bag, _ = self.forward(X)
         loss = self.criterion(logit_bag, Y)
@@ -81,8 +102,25 @@ class Attention(nn.Module):
         # return neg_log_likelihood, A
         return loss
 
+    def update(self, X, Y):
+        """
+        X: #bags x #instances x #dims => encoded patches
+        Y: #bags x #classes  ==========> slide-level label        
+        """
+        
+        self.optimizer.zero_grad()
+        with torch.cuda.amp.autocast():
+            loss = self.calculate_objective(X, Y)
+
+        self.scaler.scale(loss).backward()
+        self.scaler.step(self.optimizer)
+        self.scaler.update()
+        if self.scheduler is not None:
+            self.scheduler.step() 
+
+
 class GatedAttention(nn.Module):
-    def __init__(self, dim_in:int=2048, dim_latent: int= 512, dim_out = 1):
+    def __init__(self, args, optimizer=None, criterion=None, scheduler=None, dim_in:int=2048, dim_latent: int= 512, dim_out=1):
         super(GatedAttention, self).__init__()
         self.L = dim_latent
         self.D = 128
@@ -97,7 +135,7 @@ class GatedAttention(nn.Module):
         #     nn.MaxPool2d(2, stride=2)
         # )
 
-        self.feature_extractor_part2 = nn.Sequential(
+        self.encoder = nn.Sequential(
             nn.Linear(dim_in, dim_latent),
             nn.ReLU(),
         )
@@ -119,7 +157,26 @@ class GatedAttention(nn.Module):
             nn.Linear(self.L, 1),
             # nn.Sigmoid()
         )
-        self.criterion = nn.BCEWithLogitsLoss()
+        
+        if optimizer is not None:
+            self.optimizer = optimizer
+        else:
+            self.optimizer = optim.Adam(self.parameters(), lr=0, betas=(0.9, 0.999), weight_decay=args.weight_decay)
+        
+        if criterion is not None:
+            self.criterion = criterion
+        else:
+            self.criterion = nn.BCEWithLogitsLoss()
+            
+        if scheduler is not None:
+            self.scheduler = scheduler
+        else:
+            if args.scheduler == 'single':
+                self.scheduler = CosineAnnealingWarmUpSingle(self.optimizer, max_lr=args.lr, epochs=args.epochs, steps_per_epoch=args.num_step)
+            elif args.scheduler == 'multi':
+                self.scheduler = CosineAnnealingWarmUpRestarts(self.optimizer, eta_max=args.lr, step_total=args.epochs*args.num_step)
+
+        self.scaler = torch.cuda.amp.GradScaler()
 
     def forward(self, x):
         # INPUT: #bags x #instances x #dims
@@ -128,8 +185,8 @@ class GatedAttention(nn.Module):
 
         # H = self.feature_extractor_part1(x)
         # H = H.view(-1, 50 * 4 * 4)
-        # H = self.feature_extractor_part2(H)  # NxL
-        H = self.feature_extractor_part2(x)  # BxNxL
+        # H = self.encoder(H)  # NxL
+        H = self.encoder(x)  # BxNxL
 
         A_V = self.attention_V(H)  # BxNxD
         A_U = self.attention_U(H)  # BxNxD
@@ -165,3 +222,19 @@ class GatedAttention(nn.Module):
         # neg_log_likelihood = -1. * (Y * torch.log(Y_prob) + (1. - Y) * torch.log(1. - Y_prob))  # negative log bernoulli
 
         # return neg_log_likelihood
+
+    def update(self, X, Y):
+        """
+        X: #bags x #instances x #dims => encoded patches
+        Y: #bags x #classes  ==========> slide-level label        
+        """
+        
+        self.optimizer.zero_grad()
+        with torch.cuda.amp.autocast():
+            loss = self.calculate_objective(X, Y)
+
+        self.scaler.scale(loss).backward()
+        self.scaler.step(self.optimizer)
+        self.scaler.update()
+        if self.scheduler is not None:
+            self.scheduler.step()

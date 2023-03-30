@@ -9,6 +9,11 @@ import pickle
 import numpy as np
 import glob
 
+
+    
+
+
+
 class Dataset_pkl(Dataset):
     
     def __init__(self, path_fold_pkl: str, path_pretrained_pkl_root: str, fold_now:int, fold_all:int=5, shuffle_slide: bool=True, shuffle_patch: bool=True, split: str='train', num_classes: int=1, seed:int=1):
@@ -16,7 +21,7 @@ class Dataset_pkl(Dataset):
         path_fold_pkl: path before fold{FOLD_NUMBER}.pkl
         path_pretrained_pkl_root: path before train/test
         """
-        super().__init__()        
+        super().__init__()
         assert (fold_now > 0) and (fold_now <= fold_all)
         self.path_pretrained_pkl_root = path_pretrained_pkl_root
         self.shuffle_patch = shuffle_patch
@@ -88,7 +93,27 @@ class Dataset_pkl(Dataset):
         return torch.from_numpy(np.stack(_data_temp, axis=0)), self.category_idx[_data['label']]
 
 
+class Dataset_pkl2(Dataset_pkl):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.rng = np.random.default_rng(kwargs['seed'])
 
+    def __getitem__(self, idx):
+        # if self.flag:
+        #     print(f'idx: {idx}')
+        #     self.num+=1
+        #     if self.num>5:
+        #         self.flag=False
+        if (self.split == 'train' or self.split == 'val'):
+            _data = pickle.load(open(os.path.join(self.path_pretrained_pkl, f'{self.path_pkl[idx]}.pkl'), 'rb'))
+            # self.num += len(_data['feature'])
+        elif self.split == 'test':
+            _data = pickle.load(open(self.path_pkl[idx], 'rb'))
+
+        # _data_temp = [feat['feature'] for feat in _data['feature']]
+        if self.shuffle_patch:
+            self.rng.shuffle(_data['feature'])
+        return torch.from_numpy(_data['feature']), self.category_idx[_data['label']]
 
 
 class Dataset_image(Dataset):
@@ -186,4 +211,6 @@ class rnndata(Dataset):
         
         
 # if __name__ == '__main__':
-#     Dataset_pkl(path_list_pkls = )
+#     data_root='/mnt/aitrics_ext/ext01/shared/pathology_mil'
+#     dataset = 'CAMELYON16'
+#     d=Dataset_pkl(path_fold_pkl=os.path.join(data_root, 'cv', dataset), path_pretrained_pkl_root=os.path.join(args.data_root, 'features', args.dataset, args.pretrain_type), fold_now=fold, fold_all=args.fold, shuffle_slide=True, shuffle_patch=True, split='train', num_classes=args.num_classes, seed=args.seed)

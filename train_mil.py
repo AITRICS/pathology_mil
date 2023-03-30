@@ -20,7 +20,7 @@ import torchvision.transforms as transforms
 from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import Subset
 from typing import Tuple
-from utils import adjust_learning_rate, loss, Dataset_pkl, CosineAnnealingWarmUpSingle, CosineAnnealingWarmUpRestarts, optimal_thresh, multi_label_roc, save_checkpoint
+from utils import adjust_learning_rate, loss, Dataset_pkl2, CosineAnnealingWarmUpSingle, CosineAnnealingWarmUpRestarts, optimal_thresh, multi_label_roc, save_checkpoint
 import models as milmodels
 from tqdm import tqdm, trange
 import numpy as np
@@ -43,7 +43,7 @@ parser.add_argument('--seed', default=1, type=int, help='seed for initializing t
 parser.add_argument('--save', default=False, type=bool)
 
 parser.add_argument('--dataset', default='tcga_stad', choices=['CAMELYON16', 'tcga_lung', 'tcga_stad'], type=str, help='dataset type')
-parser.add_argument('--pretrain-type', default='simclr_lr1', help='weight folder')
+parser.add_argument('--pretrain-type', default='ImageNet_Res50_newstat', help='weight folder')
 parser.add_argument('--epochs', default=10, type=int, metavar='N', help='number of total epochs to run')
 parser.add_argument('--optimizer', default='adamw', choices=['sgd', 'adam', 'adamw'], type=str, help='optimizer')
 parser.add_argument('--lr', default=0.1, type=float, metavar='LR', help='initial learning rate', dest='lr')
