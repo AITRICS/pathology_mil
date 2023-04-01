@@ -221,6 +221,7 @@ if __name__ == '__main__':
         print(f'Fold {fold_num}: ACC VAL({acc_fold_val[fold_num-1]}), AUC VAL({auc_fold_val[fold_num-1]})')
         print(f'Fold {fold_num}: ACC TEST({acc_fold_test[fold_num-1]}), AUC TEST({auc_fold_test[fold_num-1]})')
     print(f'{args.fold} folds average')
+    auc_fold_tr = np.mean(auc_fold_tr, axis=0)
     auc_fold_val = np.mean(auc_fold_val, axis=0)
     auc_fold_test = np.mean(auc_fold_test, axis=0)
     
