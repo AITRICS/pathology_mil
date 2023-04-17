@@ -165,9 +165,9 @@ def validate(val_loader, model, args):
             
             with torch.cuda.amp.autocast():
                 # output --> #bags x #classes
-                logit_bag, _ = model(images)
+                prob_bag, _ = model.infer(images)
             #classes  (prob)
-            bag_predictions.append(torch.sigmoid(logit_bag.type(torch.DoubleTensor)).squeeze(0).cpu().numpy())
+            bag_predictions.append(prob_bag.squeeze(0).cpu().numpy())
 
         # bag_labels --> #bag x #classes
         bag_labels = np.array(bag_labels)

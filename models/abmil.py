@@ -4,13 +4,14 @@ import torch.nn.functional as F
 from typing import List
 import torch.optim as optim
 from utils import CosineAnnealingWarmUpSingle, CosineAnnealingWarmUpRestarts
+from .mil import MilBase
 
-class Attention(nn.Module):
-    def __init__(self, args, optimizer=None, criterion=None, scheduler=None, dim_in:int=2048, dim_latent: int=512, dim_out: int=1):
-        super(Attention, self).__init__()
-        self.L = dim_latent
+class Attention(MilBase):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.L = self.dim_latent
         self.D = 128
-        self.K = dim_out
+        self.K = self.dim_out
 
         # self.feature_extractor_part1 = nn.Sequential(
         #     nn.Conv2d(1, 20, kernel_size=5),
@@ -22,7 +23,7 @@ class Attention(nn.Module):
         # )
 
         self.encoder = nn.Sequential(
-            nn.Linear(dim_in, self.L),
+            nn.Linear(self.dim_in, self.L),
             nn.ReLU(),
         )
 
@@ -35,26 +36,12 @@ class Attention(nn.Module):
         self.classifier = nn.Sequential(
             nn.Linear(self.L, 1)
         )
-
-        if optimizer is not None:
-            self.optimizer = optimizer
-        else:
-            self.optimizer = optim.Adam(self.parameters(), lr=0, betas=(0.9, 0.999), weight_decay=args.weight_decay)
         
-        if criterion is not None:
-            self.criterion = criterion
+        if kwargs['optimizer'] is not None:
+            self.optimizer = kwargs['optimizer']
         else:
-            self.criterion = nn.BCEWithLogitsLoss()
-            
-        if scheduler is not None:
-            self.scheduler = scheduler
-        else:
-            if args.scheduler == 'single':
-                self.scheduler = CosineAnnealingWarmUpSingle(self.optimizer, max_lr=args.lr, epochs=args.epochs, steps_per_epoch=args.num_step)
-            elif args.scheduler == 'multi':
-                self.scheduler = CosineAnnealingWarmUpRestarts(self.optimizer, eta_max=args.lr, step_total=args.epochs*args.num_step)
-
-        self.scaler = torch.cuda.amp.GradScaler()
+            self.optimizer = optim.Adam(self.parameters(), lr=0, betas=(0.9, 0.999), weight_decay=self.args.weight_decay)
+        
 
     def forward(self, x):
         # INPUT: #bags x #instances x #dims
@@ -102,29 +89,13 @@ class Attention(nn.Module):
         # return neg_log_likelihood, A
         return loss
 
-    def update(self, X, Y):
-        """
-        X: #bags x #instances x #dims => encoded patches
-        Y: #bags x #classes  ==========> slide-level label        
-        """
-        
-        self.optimizer.zero_grad()
-        with torch.cuda.amp.autocast():
-            loss = self.calculate_objective(X, Y)
 
-        self.scaler.scale(loss).backward()
-        self.scaler.step(self.optimizer)
-        self.scaler.update()
-        if self.scheduler is not None:
-            self.scheduler.step() 
-
-
-class GatedAttention(nn.Module):
-    def __init__(self, args, optimizer=None, criterion=None, scheduler=None, dim_in:int=2048, dim_latent: int= 512, dim_out=1):
-        super(GatedAttention, self).__init__()
-        self.L = dim_latent
+class GatedAttention(MilBase):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.L = self.dim_latent
         self.D = 128
-        self.K = dim_out
+        self.K = self.dim_out
 
         # self.feature_extractor_part1 = nn.Sequential(
         #     nn.Conv2d(1, 20, kernel_size=5),
@@ -136,7 +107,7 @@ class GatedAttention(nn.Module):
         # )
 
         self.encoder = nn.Sequential(
-            nn.Linear(dim_in, dim_latent),
+            nn.Linear(self.dim_in, self.dim_latent),
             nn.ReLU(),
         )
 
@@ -157,27 +128,12 @@ class GatedAttention(nn.Module):
             nn.Linear(self.L, 1),
             # nn.Sigmoid()
         )
+                
+        if kwargs['optimizer'] is not None:
+            self.optimizer = kwargs['optimizer']
+        else:
+            self.optimizer = optim.Adam(self.parameters(), lr=0, betas=(0.9, 0.999), weight_decay=self.args.weight_decay)
         
-        if optimizer is not None:
-            self.optimizer = optimizer
-        else:
-            self.optimizer = optim.Adam(self.parameters(), lr=0, betas=(0.9, 0.999), weight_decay=args.weight_decay)
-        
-        if criterion is not None:
-            self.criterion = criterion
-        else:
-            self.criterion = nn.BCEWithLogitsLoss()
-            
-        if scheduler is not None:
-            self.scheduler = scheduler
-        else:
-            if args.scheduler == 'single':
-                self.scheduler = CosineAnnealingWarmUpSingle(self.optimizer, max_lr=args.lr, epochs=args.epochs, steps_per_epoch=args.num_step)
-            elif args.scheduler == 'multi':
-                self.scheduler = CosineAnnealingWarmUpRestarts(self.optimizer, eta_max=args.lr, step_total=args.epochs*args.num_step)
-
-        self.scaler = torch.cuda.amp.GradScaler()
-
     def forward(self, x):
         # INPUT: #bags x #instances x #dims
         # OUTPUT: #bags x #classes
@@ -222,19 +178,3 @@ class GatedAttention(nn.Module):
         # neg_log_likelihood = -1. * (Y * torch.log(Y_prob) + (1. - Y) * torch.log(1. - Y_prob))  # negative log bernoulli
 
         # return neg_log_likelihood
-
-    def update(self, X, Y):
-        """
-        X: #bags x #instances x #dims => encoded patches
-        Y: #bags x #classes  ==========> slide-level label        
-        """
-        
-        self.optimizer.zero_grad()
-        with torch.cuda.amp.autocast():
-            loss = self.calculate_objective(X, Y)
-
-        self.scaler.scale(loss).backward()
-        self.scaler.step(self.optimizer)
-        self.scaler.update()
-        if self.scheduler is not None:
-            self.scheduler.step()

@@ -2,9 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
+from .mil import MilBase
     
-
-
 class FCLayer(nn.Module):
     def __init__(self, in_size, out_size=1):
         super(FCLayer, self).__init__()
@@ -77,12 +76,9 @@ class MILNet(nn.Module):
         return classes, prediction_bag, A, B
         
         
-class dsmil(nn.Module):
+class Dsmil(MilBase):
     def __init__(self,encoder=None, dim_in:int=2048, dim_latent=None, dim_out=1):
         super().__init__()
-        self.dim_in = dim_in
-        self.dim_out = dim_out
-        self.criterion = nn.BCEWithLogitsLoss()
         
         self.i_classifier = FCLayer(in_size=self.dim_in, out_size=self.dim_out)
         self.b_classifier = BClassifier(input_size=self.dim_in, output_class=self.dim_out)
@@ -92,11 +88,17 @@ class dsmil(nn.Module):
         dsmil_input = x.squeeze(0)
         logit_instance, logit_bag, _, _ = self.milnet(dsmil_input) # ins_prediction (num_patch, n) bag_prediction (1,n)        
         return logit_bag, logit_instance.unsqueeze(0)
+        # average 해야함
     
     def calculate_objective(self, X, Y):
         logit_bag, logit_instance = self.forward(X)
-        max_prediction, _ = torch.max(logit_instance, 1)        # (1,n)
+        max_logit_instance, _ = torch.max(logit_instance, 1)        # (1,n)
         bag_loss = self.criterion(logit_bag.view(1, -1), Y.view(1, -1)) # num class n : BCE([1,n],[1,n])
-        max_loss = self.criterion(max_prediction.view(1, -1), Y.view(1, -1))
+        max_loss = self.criterion(max_logit_instance.view(1, -1), Y.view(1, -1))
         
         return 0.5*bag_loss + 0.5*max_loss
+    
+    def infer(self, x: torch.Tensor):
+        logit_bag, logit_instance = self.forward(x)
+        max_logit_instance, _ = torch.max(logit_instance, 1)        # (1,n)
+        return 0.5*torch.sigmoid(max_logit_instance)+0.5*torch.sigmoid(logit_bag)

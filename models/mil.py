@@ -8,33 +8,16 @@ from utils import CosineAnnealingWarmUpSingle, CosineAnnealingWarmUpRestarts
 
 
 class MilBase(nn.Module):
-
-    def __init__(self, args, optimizer=None, criterion=None, scheduler=None, encoder=None, dim_in:int=2048, dim_latent: int= 512, dim_out = 1, pool = nn.AdaptiveMaxPool1d((1))):
+    def __init__(self, args, optimizer=None, criterion=None, scheduler=None, dim_in:int=2048, dim_latent: int=512, dim_out=1):
         super().__init__()
+        self.args = args
+        self.optimizer = optimizer
 
-        if encoder == None:
-            self.encoder = nn.Sequential(
-                # nn.Dropout(p=0.3),
-                nn.Linear(dim_in, dim_latent),
-                nn.ReLU(),
-            )
-        else:
-            self.encoder = encoder
-
-        self.pool = pool
-        self.score = nn.Linear(dim_latent, dim_out, bias=True)
-
-
-        if optimizer is not None:
-            self.optimizer = optimizer
-        else:
-            raise ValueError("dude this is your own model class, define optimizer then.")
-        
         if criterion is not None:
             self.criterion = criterion
         else:
             self.criterion = nn.BCEWithLogitsLoss()
-            
+        
         if scheduler is not None:
             self.scheduler = scheduler
         else:
@@ -43,7 +26,85 @@ class MilBase(nn.Module):
             elif args.scheduler == 'multi':
                 self.scheduler = CosineAnnealingWarmUpRestarts(self.optimizer, eta_max=args.lr, step_total=args.epochs*args.num_step)
 
+        self.dim_in = dim_in
+        self.dim_latent = dim_latent
+        self.dim_out = dim_out
         self.scaler = torch.cuda.amp.GradScaler()
+        self.sigmoid = nn.Sigmoid()
+
+    def forward(self, x: torch.Tensor):
+        """
+        <INPUT>
+        x: #bags x #instances x #dims => encoded patches
+
+        <OUTPUT> <- None if unnecessary
+        logit_bag: #bags x #class
+        logit_instance: #bags x #instances x #class
+        """
+        pass
+
+    def infer(self, x: torch.Tensor):
+        """
+        <INPUT>
+        x: #bags x #instances x #dims => encoded patches
+
+        <OUTPUT> <- None if unnecessary
+        prob_bag: #bags x #class
+        prob_instance: #bags x #instances x #class
+        """
+        logit_bag, logit_instance = self.forward(x)
+
+        prob_bag = self.sigmoid(logit_bag)
+        prob_instance = self.sigmoid(logit_instance) if logit_instance is not None else None
+        return prob_bag, prob_instance
+    
+    def calculate_objective(self, X, Y):
+        """
+        <INPUT>
+        X: #bags x #instances x #dims => encoded patches
+        Y: #bags x #classes  ==========> slide-level label
+
+        <OUTPUT>
+        loss: scalar
+        """
+        pass
+
+    def update(self, X, Y):
+        """
+        X: #bags x #instances x #dims => encoded patches
+        Y: #bags x #classes  ==========> slide-level label
+
+        <OUTPUT>
+        None
+        """
+        
+        self.optimizer.zero_grad()
+        with torch.cuda.amp.autocast():
+            loss = self.calculate_objective(X, Y)
+
+        self.scaler.scale(loss).backward()
+        self.scaler.step(self.optimizer)
+        self.scaler.update()
+        if self.scheduler is not None:
+            self.scheduler.step()
+
+class MilCustom(MilBase):
+
+    # def __init__(self, args, optimizer=None, criterion=None, scheduler=None, encoder=None, dim_in:int=2048, dim_latent: int= 512, dim_out = 1, pool = nn.AdaptiveMaxPool1d((1))):
+    def __init__(self, encoder=None, pool = nn.AdaptiveMaxPool1d((1)), **kwargs):
+        super().__init__(**kwargs)
+
+        if encoder == None:
+            self.encoder = nn.Sequential(
+                # nn.Dropout(p=0.3),
+                nn.Linear(self.dim_in, self.dim_latent),
+                nn.ReLU(),
+            )
+        else:
+            self.encoder = encoder
+
+        self.pool = pool
+        self.score = nn.Linear(self.dim_latent, self.dim_out, bias=True)
 
     def forward(self, x: torch.Tensor):
         
@@ -60,41 +121,26 @@ class MilBase(nn.Module):
         logit_bag, _ = self.forward(X)
         loss = self.criterion(logit_bag, Y)
 
-        return loss
+        return loss    
 
-    def update(self, X, Y):
-        """
-        X: #bags x #instances x #dims => encoded patches
-        Y: #bags x #classes  ==========> slide-level label        
-        """
-        
-        self.optimizer.zero_grad()
-        with torch.cuda.amp.autocast():
-            loss = self.calculate_objective(X, Y)
-
-        self.scaler.scale(loss).backward()
-        self.scaler.step(self.optimizer)
-        self.scaler.update()
-        if self.scheduler is not None:
-            self.scheduler.step() 
 
 # INPUT: #bags x #instances x #dims
 # OUTPUT: #bags x #classes
 
 
-class MilTransformer(nn.Module):
+class MilTransformer(MilBase):
 
-    def __init__(self, encoder=None, dim_in:int=2048, dim_latent: int= 512, dim_out = 1, num_heads=8, num_layers=3, share_proj=False, balance_param=math.log(39./252.)):
-        super().__init__()
+    def __init__(self, encoder=None, num_heads=8, num_layers=3, share_proj=False, balance_param=math.log(39./252.),  **kwargs):
+        super().__init__(**kwargs)
 
         if encoder == None:
             self.encoder = nn.Sequential(
                 # nn.Dropout(p=0.3),
-                nn.Linear(dim_in, dim_latent),
+                nn.Linear(self.dim_in, self.dim_latent),
                 nn.ReLU(),
             )
         elif encoder == 'resnet':
-            assert dim_latent == 512
+            assert self.dim_latent == 512
             from torchvision.models import resnet18, ResNet18_Weights
             self.encoder = resnet18(weights=ResNet18_Weights.DEFAULT)
             self.encoder.fc = nn.Identity()
@@ -102,11 +148,11 @@ class MilTransformer(nn.Module):
             self.encoder = encoder()
         
         # self.pool = nn.TransformerEncoder(nn.TransformerEncoderLayer(d_model=dim_latent, nhead=num_heads), num_layers=num_layers, enable_nested_tensor=True)    
-        self.pool = nn.TransformerEncoder(nn.TransformerEncoderLayer(d_model=dim_latent, nhead=num_heads, batch_first=False), num_layers=num_layers)    
-        self.cls_token = nn.Parameter(torch.zeros(1, 1, dim_latent, requires_grad=True))
+        self.pool = nn.TransformerEncoder(nn.TransformerEncoderLayer(d_model=self.dim_latent, nhead=num_heads, batch_first=False), num_layers=num_layers)    
+        self.cls_token = nn.Parameter(torch.zeros(1, 1, self.dim_latent, requires_grad=True))
 
-        self.score_bag = nn.Linear(dim_latent, dim_out, bias=True)
-        self.score_instance = nn.Linear(dim_latent, dim_out, bias=True)
+        self.score_bag = nn.Linear(self.dim_latent, self.dim_out, bias=True)
+        self.score_instance = nn.Linear(self.dim_latent, self.dim_out, bias=True)
         self.share_proj = share_proj
         self.criterion = nn.BCEWithLogitsLoss()
         self.balance_param = balance_param
@@ -161,22 +207,6 @@ class MilTransformer(nn.Module):
 
         return loss
 
-    def update(self, X, Y):
-        """
-        X: #bags x #instances x #dims => encoded patches
-        Y: #bags x #classes  ==========> slide-level label        
-        """
-        
-        self.optimizer.zero_grad()
-        with torch.cuda.amp.autocast():
-            loss = self.calculate_objective(X, Y)
-
-        self.scaler.scale(loss).backward()
-        self.scaler.step(self.optimizer)
-        self.scaler.update()
-        if self.scheduler is not None:
-            self.scheduler.step()    
-    
 
     
 # class MilTransformer_(nn.Module):
@@ -222,9 +252,9 @@ class MilTransformer(nn.Module):
 
 
 def milmax(encoder=None, dim_in:int=2048, dim_latent: int= 512, dim_out = 1):
-    return MilBase(encoder=encoder, dim_in=dim_in, dim_latent=dim_latent, dim_out=dim_out, pool=nn.AdaptiveMaxPool1d((1)))
+    return MilCustom(encoder=encoder, dim_in=dim_in, dim_latent=dim_latent, dim_out=dim_out, pool=nn.AdaptiveMaxPool1d((1)))
 
 
 
 def milmean(encoder=None, dim_in:int=2048, dim_latent: int= 512, dim_out = 1):
-    return MilBase(encoder=encoder, dim_in=dim_in, dim_latent=dim_latent, dim_out=dim_out, pool=nn.AdaptiveAvgPool1d((1)))
+    return MilCustom(encoder=encoder, dim_in=dim_in, dim_latent=dim_latent, dim_out=dim_out, pool=nn.AdaptiveAvgPool1d((1)))
