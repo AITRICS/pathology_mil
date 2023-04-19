@@ -12,25 +12,37 @@ class MilBase(nn.Module):
         super().__init__()
         self.args = args
         self.optimizer = optimizer
+        self.scheduler = scheduler
 
         if criterion is not None:
             self.criterion = criterion
         else:
             self.criterion = nn.BCEWithLogitsLoss()
         
-        if scheduler is not None:
-            self.scheduler = scheduler
-        else:
-            if args.scheduler == 'single':
-                self.scheduler = CosineAnnealingWarmUpSingle(self.optimizer, max_lr=args.lr, epochs=args.epochs, steps_per_epoch=args.num_step)
-            elif args.scheduler == 'multi':
-                self.scheduler = CosineAnnealingWarmUpRestarts(self.optimizer, eta_max=args.lr, step_total=args.epochs*args.num_step)
+        # if scheduler is not None:
+        #     self.scheduler = scheduler
+        # else:
+        #     if args.scheduler == 'single':
+        #         self.scheduler = CosineAnnealingWarmUpSingle(self.optimizer, max_lr=args.lr, epochs=args.epochs, steps_per_epoch=args.num_step)
+        #     elif args.scheduler == 'multi':
+        #         self.scheduler = CosineAnnealingWarmUpRestarts(self.optimizer, eta_max=args.lr, step_total=args.epochs*args.num_step)
 
         self.dim_in = dim_in
         self.dim_latent = dim_latent
         self.dim_out = dim_out
         self.scaler = torch.cuda.amp.GradScaler()
         self.sigmoid = nn.Sigmoid()
+
+    def set_optimizer(self):
+
+        if self.optimizer is None:
+            self.optimizer = optim.Adam(self.parameters(), lr=0, betas=(0.9, 0.999), weight_decay=self.args.weight_decay)
+
+        if self.scheduler is None:
+            if self.args.scheduler == 'single':
+                self.scheduler = CosineAnnealingWarmUpSingle(self.optimizer, max_lr=self.args.lr, epochs=self.args.epochs, steps_per_epoch=self.args.num_step)
+            elif self.args.scheduler == 'multi':
+                self.scheduler = CosineAnnealingWarmUpRestarts(self.optimizer, eta_max=self.args.lr, step_total=self.args.epochs*self.args.num_step)
 
     def forward(self, x: torch.Tensor):
         """

@@ -31,9 +31,9 @@ from datetime import datetime
 import torchvision
 import math
 
-model_names = sorted(name for name in models.__dict__
-    if name.islower() and not name.startswith("__")
-    and callable(models.__dict__[name]))
+# model_names = sorted(name for name in models.__dict__
+#     if name.islower() and not name.startswith("__")
+#     and callable(models.__dict__[name]))
 # /nfs/strange/shared/hazel/stad_simclr_lr1/train
 parser = argparse.ArgumentParser(description='MIL Training')
 parser.add_argument('--data-root', default='/mnt/aitrics_ext/ext01/shared/pathology_mil', help='path to dataset')
@@ -53,7 +53,7 @@ parser.add_argument('--optimizer', default='sgd', choices=['sgd', 'adam', 'adamw
 parser.add_argument('--lr', default=0.001, type=float, metavar='LR', help='initial learning rate', dest='lr')
 # DTFD: 1e-4, TransMIL: 1e-5
 parser.add_argument('--wd', '--weight-decay', default=1e-4, type=float, metavar='W', help='weight decay (default: 1e-4)', dest='weight_decay')
-parser.add_argument('--mil-model', default='dtfd', choices=[ 'monai.max','monai.att','monai.att_trans','milmax', 'milmean', 'Attention', 'GatedAttention','dsmil','milrnn','dtfd'], type=str, help='use pre-training method')
+parser.add_argument('--mil-model', default='Dtfd', choices=[ 'monai.max','monai.att','monai.att_trans','milmax', 'milmean', 'Attention', 'GatedAttention','Dsmil','milrnn','Dtfd'], type=str, help='use pre-training method')
 
 
 parser.add_argument('--pushtoken', default=False, help='Push Bullet token')
@@ -82,7 +82,7 @@ def run_fold(args, fold, txt_name) -> Tuple:
         mode = args.mil_model.split('.')[-1]
         model = milmodels.__dict__['MonaiMil'](dim_in=dim_in, dim_latent=512, dim_out=args.num_classes, mil_mode=mode).cuda()
     else:
-        model = milmodels.__dict__[args.mil_model](args=args, dim_in=dim_in, dim_latent=512, dim_out=args.num_classes).cuda()
+        model = milmodels.__dict__[args.mil_model](args=args, optimizer=None, criterion=None, scheduler=None, dim_in=dim_in, dim_latent=512, dim_out=args.num_classes).cuda()
     
     # if args.loss == 'bce':
     #     criterion = nn.BCEWithLogitsLoss().cuda()
@@ -114,6 +114,8 @@ def run_fold(args, fold, txt_name) -> Tuple:
             auc_val = auc
             acc_val = acc
             torch.save({'state_dict': model.state_dict()}, file_name)
+        print(f'auc val: {auc}')
+        print(f'kk')
     
 
     dataset_test = Dataset_pkl2(path_fold_pkl='hello my name is test', path_pretrained_pkl_root=os.path.join(args.data_root, 'features', args.dataset, args.pretrain_type), fold_now=999, fold_all=9999, shuffle_slide=False, shuffle_patch=False, split='test', num_classes=args.num_classes, seed=args.seed)
@@ -219,7 +221,7 @@ if __name__ == '__main__':
     auc_fold_test = np.mean(auc_fold_test, axis=0)
     
     with open(txt_name + '.txt', 'a' if os.path.isfile(txt_name + '.txt') else 'w') as f:
-        f.write(f'===================== LR-pretrain: {args.pretrain_type} || LR-down: {args.lr} || Optimizer: {args.optimizer}+SAM || scheduler: {args.scheduler} =======================\n')
+        f.write(f'===================== LR-pretrain: {args.pretrain_type} || LR-down: {args.lr} || Optimizer: {args.optimizer} || scheduler: {args.scheduler} =======================\n')
         if args.num_classes == 1:
             f.write(f'AUC TR: {auc_fold_tr[0]}\n')
             f.write(f'AUC VAL: {auc_fold_val[0]}\n')

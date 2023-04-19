@@ -41,6 +41,8 @@ class Attention(MilBase):
             self.optimizer = kwargs['optimizer']
         else:
             self.optimizer = optim.Adam(self.parameters(), lr=0, betas=(0.9, 0.999), weight_decay=self.args.weight_decay)
+
+        self.set_optimizer()
         
 
     def forward(self, x):
@@ -128,11 +130,13 @@ class GatedAttention(MilBase):
             nn.Linear(self.L, 1),
             # nn.Sigmoid()
         )
-                
+        
         if kwargs['optimizer'] is not None:
             self.optimizer = kwargs['optimizer']
         else:
             self.optimizer = optim.Adam(self.parameters(), lr=0, betas=(0.9, 0.999), weight_decay=self.args.weight_decay)
+
+        self.set_optimizer()        
         
     def forward(self, x):
         # INPUT: #bags x #instances x #dims

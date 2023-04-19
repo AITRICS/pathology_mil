@@ -116,14 +116,14 @@ def get_cam_1d(classifier, features):
     cam_maps = torch.einsum('bgf,cf->bcg', [features, tweight])
     return cam_maps    
     
-class dtfd(nn.Module):
+class Dtfd(nn.Module):
     def __init__(self,args, optimizer=None, criterion=None, scheduler=None,encoder=None, dim_in:int=2048, dim_latent=512, dim_out=1):
         super().__init__()
         self.dim_in = dim_in
         self.dim_out = dim_out
         self.dim_latent = dim_latent
         self.criterion = nn.BCEWithLogitsLoss() # 원래 CE 였는디..
-        self.numGroup = 5 
+        self.numGroup = 5
         self.instance_per_group = 1 # 확인하기
         self.classifier = Classifier_1fc(self.dim_latent, self.dim_out, 0)
         self.attention = Attention_Gated(self.dim_latent)
@@ -132,13 +132,13 @@ class dtfd(nn.Module):
         self.distill = 'AFS'
         self.grad_clipping = 5
         self.device = args.device
+        self.sigmoid = nn.Sigmoid()
         
         # update
-        self.optimizer0 = torch.optim.Adam(list(self.classifier.parameters())+ list(self.attention.parameters())+list(self.dimReduction.parameters()), lr=args.lr,  weight_decay=args.weight_decay)
-        self.optimizer1 = torch.optim.Adam(self.UClassifier.parameters(), lr=args.lr,  weight_decay=args.weight_decay)
+        self.optimizer0 = torch.optim.Adam(list(self.classifier.parameters())+ list(self.attention.parameters())+list(self.dimReduction.parameters()), lr=args.lr,  weight_decay=1e-4)
+        self.optimizer1 = torch.optim.Adam(self.UClassifier.parameters(), lr=args.lr,  weight_decay=1e-4)
         self.scheduler0 = torch.optim.lr_scheduler.MultiStepLR(self.optimizer0, '[100]', gamma=0.2)
         self.scheduler1 = torch.optim.lr_scheduler.MultiStepLR(self.optimizer1, '[100]', gamma=0.2)        
-        
         
     def first_tier(self, x: torch.Tensor) :
         slide_sub_preds = []
@@ -177,21 +177,27 @@ class dtfd(nn.Module):
                 slide_pseudo_feat.append(af_inst_feat)
                 
         slide_pseudo_feat = torch.cat(slide_pseudo_feat, dim=0)  ### numGroup x fs
-        slide_sub_preds = torch.cat(slide_sub_preds, dim=0) ### numGroup x 2
+        slide_sub_preds = torch.cat(slide_sub_preds, dim=0) ### numGroup x cls
         
         return slide_pseudo_feat, slide_sub_preds
         
            
     def forward(self, x: torch.Tensor):
-        slide_pseudo_feat, slide_sub_preds = self.first_tier(x)
-        logit_bag = self.UClassifier(slide_pseudo_feat)
-        
-        return logit_bag, slide_sub_preds 
+
+        feat_pseudo_bag, logit_pseudo_bag = self.first_tier(x) ### numGroup x fs      ,      numGroup x cls
+
+        logit_bag = self.UClassifier(feat_pseudo_bag)
+        # logit_bag: K(=1) x cls
+        return logit_bag, logit_pseudo_bag 
            
     def calculate_objective(self, X, Y):
-        logit_bag, slide_sub_preds = self.forward(X)
+        # X => 1 x #instance x self.dim_in, Y => #bags x #classes
+        # logit_bag: K(=1) x cls
+        # logit_pseudo_bag: numGroup x cls
+        logit_bag, logit_pseudo_bag = self.forward(X) 
+        # slide_sub_labels
         slide_sub_labels = torch.ones((self.numGroup,1)).to(self.device)*Y
-        loss0 = self.criterion(slide_sub_preds, slide_sub_labels).mean()
+        loss0 = self.criterion(logit_pseudo_bag, slide_sub_labels).mean()
         loss1 = self.criterion(logit_bag, Y).mean()
         return loss0, loss1
     
@@ -216,3 +222,18 @@ class dtfd(nn.Module):
 
         self.scheduler0.step()
         self.scheduler1.step()
+
+    def infer(self, x: torch.Tensor):
+        """
+        <INPUT>
+        x: #bags x #instances x #dims => encoded patches
+
+        <OUTPUT> <- None if unnecessary
+        prob_bag: #bags x #class
+        prob_instance: #bags x #instances x #class
+        """
+        logit_bag, _ = self.forward(x)
+
+        prob_bag = self.sigmoid(logit_bag)
+
+        return prob_bag, None
