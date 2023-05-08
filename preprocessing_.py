@@ -109,8 +109,8 @@ def generate_patch(path_wsi, pkl_dict, args):
             if mask.sum() >= threshold_background:
 
     # 5) (Under for loop & Under if if_background) Save patch    
-                # patch_pl.resize((args.config[args.dataset]['size_patch'], args.config[args.dataset]['size_patch']), Image.LANCZOS).save(os.path.join(args.config[args.dataset]['root_patch'], args.foldername, pkl_dict[os.path.basename(path_wsi).split('.')[0]], f'w{i}_h{j}.jpeg'))
-                patch_pl = patch_pl.resize((args.config[args.dataset]['size_patch'], args.config[args.dataset]['size_patch']), Image.LANCZOS).convert('RGB')
+                # patch_pl.resize((args.config[args.dataset]['size_patch'], args.config[args.dataset]['size_patch']), Image.Resampling.LANCZOS).save(os.path.join(args.config[args.dataset]['root_patch'], args.foldername, pkl_dict[os.path.basename(path_wsi).split('.')[0]], f'w{i}_h{j}.jpeg'))
+                patch_pl = patch_pl.resize((args.config[args.dataset]['size_patch'], args.config[args.dataset]['size_patch']), Image.Resampling.LANCZOS).convert('RGB')
                 patch_pl.save(os.path.join(args.config[args.dataset]['root_patch'], pkl_dict[os.path.basename(path_wsi).split('.')[0]], f'w{i}_h{j}.jpeg'))
 
 def main(args):
