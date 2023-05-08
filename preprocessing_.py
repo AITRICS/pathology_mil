@@ -5,11 +5,8 @@ from itertools import repeat
 import argparse
 import glob
 from openslide import OpenSlide
-import cucim 
 import cv2
-import math
 import numpy as np
-import pandas as pd
 import pickle
 from PIL import Image
 
@@ -160,17 +157,9 @@ def main(args):
 def parse_args():
 
     parser = argparse.ArgumentParser(description="Generate Patches from WSI")
-
-    # parser.add_argument("--root-wsi", default = None, help = 'path to root folder of WSI image')
-    parser.add_argument("--foldername", default="tcga_stad_ex", help="foldername")
-    parser.add_argument("--dataset", default='tcga_stad', choices=['camelyon', 'tcga_lung', 'tcga_stad'], help="dataset type")
-    # parser.add_argument("--patch_size", default = 256, type =int, help="The number of pixel that you want for the patches")
-    # parser.add_argument("--level-mask", default = 3, type= int)
-    # parser.add_argument("--level-patch", default = 1, type= int)
+    parser.add_argument("--foldername", default="camelyon16_jpeg_new", help="foldername")
+    parser.add_argument("--dataset", default='camelyon', choices=['camelyon', 'tcga_lung', 'tcga_stad'], help="dataset type")
     parser.add_argument("--threshold-mask", default = 0.25, type= float, help = 'minimum portion of foreground to keep certain patch')
-    # parser.add_argument("--mpp", default= 1, type = float, help= 'desired mpp')
-    # parser.add_argument("--multiprocess", action="store_true", help = 'Use multiprocessing while extracting patch from WSI')
-    # parser.add_argument("--num-process", default=20, type=int)
     args = parser.parse_args()
     return args
 
@@ -184,10 +173,15 @@ def parse_args():
 if __name__ == "__main__":
     run_start = time.time()
     args = parse_args()
-    args.config = {'camelyon': {'mpp_mask': 30, 'mpp_patch': 0.5, 'size_patch': 256, 'ext': '.tif', 'path_list_wsi': '/nfs/thena/shared/camelyon/CAMELYON16/images/*', 'root_patch': '/nfs/thena/shared/', 'pkl': 'subjectID_camelyon16'},
-                'tcga_lung': {'mpp_mask': 2, 'mpp_patch': 0.5, 'size_patch': 256, 'ext': '.svs', 'path_list_wsi': '/nfs/thena/shared/tcga_lung/*/*', 'root_patch': '/nfs/thena/shared/', 'pkl': 'subjectID_tcgalung'},
-                'tcga_stad': {'mpp_mask': 2, 'mpp_patch': 1.0, 'size_patch': 512, 'ext': '.svs', 'path_list_wsi': '/nfs/thena/shared/tcga_stad_wsi/*/*', 'root_patch': '/nfs/thena/shared/', 'pkl': 'subjectID_tcgastadher2'}}
-        
+    # args.config = {'camelyon': {'mpp_mask': 30, 'mpp_patch': 0.5, 'size_patch': 256, 'ext': '.tif', 'path_list_wsi': '/nfs/thena/shared/camelyon/CAMELYON16/images/*', 'root_patch': '/nfs/thena/shared/', 'pkl': 'subjectID_camelyon16'},
+    #             'tcga_lung': {'mpp_mask': 2, 'mpp_patch': 0.5, 'size_patch': 256, 'ext': '.svs', 'path_list_wsi': '/nfs/thena/shared/tcga_lung/*/*', 'root_patch': '/nfs/thena/shared/', 'pkl': 'subjectID_tcgalung'},
+    #             'tcga_stad': {'mpp_mask': 2, 'mpp_patch': 1.0, 'size_patch': 512, 'ext': '.svs', 'path_list_wsi': '/nfs/thena/shared/tcga_stad_wsi/*/*', 'root_patch': '/nfs/thena/shared/', 'pkl': 'subjectID_tcgastadher2'}}
+    
+    args.config = {'camelyon': {'mpp_mask': 30, 'mpp_patch': 0.5, 'size_patch': 256, 'ext': '.tif', 'path_list_wsi': '/mnt/aitrics_ext/ext01/shared/camelyon/CAMELYON16/images/*', 'root_patch': '/mnt/aitrics_ext/ext01/shared/', 'pkl': 'subjectID_camelyon16'},
+                'tcga_lung': {'mpp_mask': 2, 'mpp_patch': 0.5, 'size_patch': 256, 'ext': '.svs', 'path_list_wsi': '/mnt/aitrics_ext/ext01/shared/tcga_lung/*/*', 'root_patch': '/mnt/aitrics_ext/ext01/shared/', 'pkl': 'subjectID_tcgalung'},
+                'tcga_stad': {'mpp_mask': 2, 'mpp_patch': 1.0, 'size_patch': 512, 'ext': '.svs', 'path_list_wsi': '/mnt/aitrics_ext/ext01/shared/tcga_stad_wsi/*/*', 'root_patch': '/mnt/aitrics_ext/ext01/shared/', 'pkl': 'subjectID_tcgastadher2'}}
+
+
     args.config[args.dataset]['root_patch'] += args.foldername
 
     if os.path.isdir(args.config[args.dataset]['root_patch']):
