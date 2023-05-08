@@ -88,7 +88,7 @@ def generate_patch(path_wsi, pkl_dict, args):
         list_idx_height.pop(-1)
         list_idx_height.append(h_level_patch-size_patch_level_patchy)
 
-    threshold_background = size_patch_level_patchx * size_patch_level_patchy * args.threshold_mask * 255
+    threshold_background = size_patch_level_patchx * size_patch_level_patchy * args.threshold_mask
     kernel = np.ones((32, 32), np.uint8)
 
     ## 4) Do for loop using size_patch_level_patch
@@ -104,7 +104,7 @@ def generate_patch(path_wsi, pkl_dict, args):
             
             mask = cv2.erode(cv2.dilate(mask, kernel, iterations=1), kernel, iterations=1)
             mask = cv2.dilate(cv2.erode(mask, kernel, iterations=1), kernel, iterations=1)
-            print(f'min({np.min(mask)}), max({np.max(mask)})')
+            # print(f'min({np.min(mask)}), max({np.max(mask)})')
     # 4) (Under for loop) Get if_background
             if mask.sum() >= threshold_background:
 
