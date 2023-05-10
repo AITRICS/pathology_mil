@@ -67,8 +67,8 @@ def generate_patch(path_wsi, pkl_dict, args):
     size_patch_level_patchx = round(args.config[args.dataset]['size_patch'] * args.config[args.dataset]['mpp_patch'] / mppx_np[level_patch])
     size_patch_level_patchy = round(args.config[args.dataset]['size_patch'] * args.config[args.dataset]['mpp_patch'] / mppy_np[level_patch])
 
-    size_level0_patchx = size_patch_level_patchx * mppx_np[level_patch] / float(mppx_np[0])
-    size_level0_patchy = size_patch_level_patchy * mppx_np[level_patch] / float(mppx_np[0])
+    size_level0_patchx = round(size_patch_level_patchx * mppx_np[level_patch] / float(mppx_np[0]))
+    size_level0_patchy = round(size_patch_level_patchy * mppx_np[level_patch] / float(mppx_np[0]))
 
     ## 2) Get threshold_cb (th_cb, 크면 foreground), threshold_cr (th_cr, 크면 foreground) using level_mask
 
