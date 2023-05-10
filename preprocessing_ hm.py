@@ -9,6 +9,7 @@ import cv2
 import numpy as np
 import pickle
 from PIL import Image
+import skimage
 
 
 # def generate_patch(path_wsi, pkl_dict, args):
@@ -67,26 +68,30 @@ def generate_patch(path_wsi, pkl_dict, args):
     size_patch_level_patchx = round(args.config[args.dataset]['size_patch'] * args.config[args.dataset]['mpp_patch'] / mppx_np[level_patch])
     size_patch_level_patchy = round(args.config[args.dataset]['size_patch'] * args.config[args.dataset]['mpp_patch'] / mppy_np[level_patch])
 
+    size_level0_patchx = round(size_patch_level_patchx * mppx_np[level_patch] / float(mppx_np[0]))
+    size_level0_patchy = round(size_patch_level_patchy * mppx_np[level_patch] / float(mppx_np[0]))
+
     ## 2) Get threshold_cb (th_cb, 크면 foreground), threshold_cr (th_cr, 크면 foreground) using level_mask
 
-    mask_pl = wsi.read_region(location=(0,0), level=level_mask,
-                        size=(int(wsi.properties[f'openslide.level[{level_mask}].width']), int(wsi.properties[f'openslide.level[{level_mask}].height']))).convert('YCbCr')
-    mask_np = np.array(mask_pl)
-    th_cb, _ = cv2.threshold(mask_np[:, :, 1], 80, 255, cv2.THRESH_BINARY+cv2.THRESH_OTSU)
-    th_cr, _ = cv2.threshold(mask_np[:, :, 2], 80, 255, cv2.THRESH_BINARY+cv2.THRESH_OTSU)
+    # mask_pl = wsi.read_region(location=(0,0), level=level_mask,
+    #                     size=(int(wsi.properties[f'openslide.level[{level_mask}].width']), int(wsi.properties[f'openslide.level[{level_mask}].height']))).convert('YCbCr')
+    # mask_np = np.array(mask_pl)
+    # th_cb, _ = cv2.threshold(mask_np[:, :, 1], 80, 255, cv2.THRESH_BINARY+cv2.THRESH_OTSU)
+    # th_cr, _ = cv2.threshold(mask_np[:, :, 2], 80, 255, cv2.THRESH_BINARY+cv2.THRESH_OTSU)
 
     ## 3) Get list_idx_width, list_idx_height, threshold_background. 0 dimension of numpy is height
 
-    w_level_patch, h_level_patch = wsi.level_dimensions[level_patch]
-    list_idx_width = list(range(0, w_level_patch, size_patch_level_patchx))
-    list_idx_height = list(range(0, h_level_patch, size_patch_level_patchy))
+    # w_level_patch, h_level_patch = wsi.level_dimensions[level_patch]
+    w_level0, h_level0 = wsi.level_dimensions[0]
+    list_idx_width = list(range(0, w_level0, size_level0_patchx))
+    list_idx_height = list(range(0, h_level0, size_level0_patchy))
 
-    if w_level_patch % size_patch_level_patchx != 0:
+    if w_level0 % size_patch_level_patchx != 0:
         list_idx_width.pop(-1)
-        list_idx_width.append(w_level_patch-size_patch_level_patchx)
-    if h_level_patch % size_patch_level_patchy != 0:
+        list_idx_width.append(w_level0-size_patch_level_patchx)
+    if h_level0 % size_patch_level_patchy != 0:
         list_idx_height.pop(-1)
-        list_idx_height.append(h_level_patch-size_patch_level_patchy)
+        list_idx_height.append(h_level0-size_patch_level_patchy)
 
     threshold_background = size_patch_level_patchx * size_patch_level_patchy * args.threshold_mask
     kernel = np.ones((32, 32), np.uint8)
@@ -95,17 +100,21 @@ def generate_patch(path_wsi, pkl_dict, args):
     for i in list_idx_width:
         for j in list_idx_height:
             patch_pl = wsi.read_region(location=(i,j), level=level_patch, size=(size_patch_level_patchx, size_patch_level_patchy))
-            patch_ycbcr_np = np.array(patch_pl.convert('YCbCr'))
+            patch_rgb_np = np.array(patch_pl.convert('RGB'))
     ## 5) Get if_background
             
-            mask_cb = cv2.threshold(patch_ycbcr_np[:,:,1], thresh=th_cb, maxval=1, type=cv2.THRESH_BINARY)
-            mask_cr = cv2.threshold(patch_ycbcr_np[:,:,2], thresh=th_cr, maxval=1, type=cv2.THRESH_BINARY)
-            mask = mask_cb[1] | mask_cr[1]
-            
+            # mask_cb = cv2.threshold(patch_ycbcr_np[:,:,1], thresh=th_cb, maxval=1, type=cv2.THRESH_BINARY)
+            # mask_cr = cv2.threshold(patch_ycbcr_np[:,:,2], thresh=th_cr, maxval=1, type=cv2.THRESH_BINARY)
+            # mask = mask_cb[1] | mask_cr[1]
+            mask = skimage.color.rgb2hed(patch_rgb_np)[:,:,1] >= 0.02
+            # if mask.sum() >= threshold_background:
+                # print('yes')
+            mask = mask.astype(float)
             mask = cv2.erode(cv2.dilate(mask, kernel, iterations=1), kernel, iterations=1)
             mask = cv2.dilate(cv2.erode(mask, kernel, iterations=1), kernel, iterations=1)
             # print(f'min({np.min(mask)}), max({np.max(mask)})')
     # 4) (Under for loop) Get if_background
+    
             if mask.sum() >= threshold_background:
 
     # 5) (Under for loop & Under if if_background) Save patch    
@@ -148,18 +157,18 @@ def main(args):
         if if_pkl_exist == False:
             pathlist_wsi.remove(path_wsi)
 
-    p = mp.Pool(os.cpu_count())
-    p.starmap(generate_patch, zip(pathlist_wsi, repeat(pkl), repeat(args)))
-    # for path_wsi in pathlist_wsi:
-    #     generate_patch(path_wsi, pkl, args)
+    # p = mp.Pool(os.cpu_count())
+    # p.starmap(generate_patch, zip(pathlist_wsi, repeat(pkl), repeat(args)))
+    for path_wsi in pathlist_wsi:
+       generate_patch(path_wsi, pkl, args)
 
 
 def parse_args():
 
     parser = argparse.ArgumentParser(description="Generate Patches from WSI")
-    parser.add_argument("--foldername", default="camelyon16_jpeg_new", help="foldername")
+    parser.add_argument("--foldername", default="eeeeeeeeeeeeex", help="foldername")
     parser.add_argument("--dataset", default='camelyon', choices=['camelyon', 'tcga_lung', 'tcga_stad'], help="dataset type")
-    parser.add_argument("--threshold-mask", default = 0.25, type= float, help = 'minimum portion of foreground to keep certain patch')
+    parser.add_argument("--threshold-mask", default = 0.1, type= float, help = 'minimum portion of foreground to keep certain patch')
     args = parser.parse_args()
     return args
 
