@@ -35,7 +35,7 @@ def generate_patch(path_wsi, pkl_dict, args):
             mppy = float(10**4) / float(wsi.properties['tiff.YResolution'])
         except:
             mppx = float(wsi.properties['openslide.mpp-x']) 
-            mppy = float(wsi.properties['openslide.mpp-y'])                 
+            mppy = float(wsi.properties['openslide.mpp-y'])
     else:
         try:
             mppx = float(wsi.properties['openslide.mpp-x'])
