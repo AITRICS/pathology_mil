@@ -16,9 +16,8 @@ import glob
 
 class Dataset_pkl(Dataset):
     
-    def __init__(self, path_fold_pkl: str, path_pretrained_pkl_root: str, fold_now:int, fold_all:int=5, shuffle_slide: bool=True, shuffle_patch: bool=True, split: str='train', num_classes: int=1, seed:int=1):
+    def __init__(self, path_pretrained_pkl_root: str, fold_now:int, fold_all:int=5, shuffle_slide: bool=True, shuffle_patch: bool=True, split: str='train', num_classes: int=1, seed:int=1):
         """
-        path_fold_pkl: path before fold{FOLD_NUMBER}.pkl
         path_pretrained_pkl_root: path before train/test
         """
         super().__init__()
@@ -31,24 +30,28 @@ class Dataset_pkl(Dataset):
         self.rd = random.Random(seed)
 
         #  Normal must be 0
-        print(f'=== Category Indexing ===') 
+        print(f'=== Category Indexing ===')
         self.category_idx = {}
-        if 'normal' in os.listdir(os.path.join(path_pretrained_pkl_root, 'train' if (split=='train' or split=='val') else 'test')):
+        
+        if 'normal' in os.listdir(os.path.join(path_pretrained_pkl_root, 'test')):
             assert num_classes == 1
             self.category_idx['normal'] = np.zeros(1)
-            _list_category = os.listdir(os.path.join(path_pretrained_pkl_root, 'train' if (split=='train' or split=='val') else 'test'))
+            _list_category = os.listdir(os.path.join(path_pretrained_pkl_root, 'test'))
             _list_category.remove('normal')
             assert len(_list_category) == 1
             self.category_idx[_list_category[0]] = np.ones(1)
-            
+
         else:
-            _categories = os.listdir(os.path.join(path_pretrained_pkl_root, 'train' if (split=='train' or split=='val') else 'test'))
+            _categories = os.listdir(os.path.join(path_pretrained_pkl_root, 'test'))
             _categories.sort()
             for i, _category in enumerate(_categories):
                 if num_classes > 1:
                     _temp = np.zeros(num_classes)
                     _temp[i] = 1
                     self.category_idx[_category] = _temp
+                    
+                    self.category_idx[_category] = np.zeros(num_classes)
+                    self.category_idx[_category][i] = 1
                 else:
                     _temp = np.zeros(1)
                     _temp[0] = i
@@ -115,6 +118,29 @@ class Dataset_pkl2(Dataset_pkl):
             self.rng.shuffle(_data['feature'])
         return torch.from_numpy(_data['feature']), self.category_idx[_data['label']]
 
+
+class Dataset_pkl3(Dataset_pkl):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.rng = np.random.default_rng(kwargs['seed'])
+
+    def __getitem__(self, idx):
+        # if self.flag:
+        #     print(f'idx: {idx}')
+        #     self.num+=1
+        #     if self.num>5:
+        #         self.flag=False
+        if (self.split == 'train' or self.split == 'val'):
+            _data = pickle.load(open(os.path.join(self.path_pretrained_pkl, f'{self.path_pkl[idx]}.pkl'), 'rb'))
+            # self.num += len(_data['feature'])
+        elif self.split == 'test':
+            _data = pickle.load(open(self.path_pkl[idx], 'rb'))
+
+        # _data_temp = [feat['feature'] for feat in _data['feature']]
+        if self.shuffle_patch:
+            self.rng.shuffle(_data['feature'])
+        return torch.from_numpy(_data['feature']), self.category_idx[_data['label']]
+    
 
 class Dataset_image(Dataset):
     
