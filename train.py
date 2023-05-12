@@ -20,7 +20,7 @@ import torchvision.transforms as transforms
 from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import Subset
 from typing import Tuple
-from utils import adjust_learning_rate, loss, Dataset_pkl2, CosineAnnealingWarmUpSingle, CosineAnnealingWarmUpRestarts, optimal_thresh, multi_label_roc, save_checkpoint
+from utils import adjust_learning_rate, loss, Dataset_pkl, CosineAnnealingWarmUpSingle, CosineAnnealingWarmUpRestarts, optimal_thresh, multi_label_roc, save_checkpoint
 import models as milmodels
 from tqdm import tqdm, trange
 import numpy as np
@@ -36,25 +36,24 @@ import math
 #     and callable(models.__dict__[name]))
 # /nfs/strange/shared/hazel/stad_simclr_lr1/train
 parser = argparse.ArgumentParser(description='MIL Training')
-parser.add_argument('--data-root', default='/mnt/aitrics_ext/ext01/shared/pathology_mil', help='path to dataset')
+parser.add_argument('--data-root', default='/mnt/aitrics_ext/ext01/shared/camelyon16_jpeg_new_pkl/ImageNet_Res50_newstat', help='path to dataset')
 parser.add_argument('--fold', default=5, help='number of fold for cross validation')
 parser.add_argument('-j', '--workers', default=1, type=int, metavar='N', help='number of data loading workers (default: 1)')
-parser.add_argument('--scheduler', default='single', choices=['single', 'multi'], type=str, help='loss scheduler')
+# parser.add_argument('--scheduler', default='single', choices=['single', 'multi'], type=str, help='loss scheduler')
 parser.add_argument('--loss', default='bce', choices=['bce'], type=str, help='loss function')
 parser.add_argument('-b', '--batch-size', default=1, type=int, metavar='N', help='the total batch size on the current node (DDP)')
 parser.add_argument('--momentum', default=0.9, type=float, help='sgd momentum')
 parser.add_argument('--seed', default=1, type=int, help='seed for initializing training. ')
 
 parser.add_argument('--dataset', default='CAMELYON16', choices=['CAMELYON16', 'tcga_lung', 'tcga_stad'], type=str, help='dataset type')
-parser.add_argument('--pretrain-type', default='ImageNet_Res50_im', help='weight folder')
+# parser.add_argument('--pretrain-type', default='ImageNet_Res50_im', help='weight folder')
 # parser.add_argument('--pretrain-type', default='simclr_lr1', help='weight folder')
-parser.add_argument('--epochs', default=2, type=int, metavar='N', help='number of total epochs to run')
-parser.add_argument('--optimizer', default='sgd', choices=['sgd', 'adam', 'adamw'], type=str, help='optimizer')
+parser.add_argument('--epochs', default=1, type=int, metavar='N', help='number of total epochs to run')
+# parser.add_argument('--optimizer', default='sgd', choices=['sgd', 'adam', 'adamw'], type=str, help='optimizer')
 parser.add_argument('--lr', default=0.001, type=float, metavar='LR', help='initial learning rate', dest='lr')
 # DTFD: 1e-4, TransMIL: 1e-5
-parser.add_argument('--wd', '--weight-decay', default=1e-4, type=float, metavar='W', help='weight decay (default: 1e-4)', dest='weight_decay')
+# parser.add_argument('--wd', '--weight-decay', default=1e-4, type=float, metavar='W', help='weight decay (default: 1e-4)', dest='weight_decay')
 parser.add_argument('--mil-model', default='Dtfd', choices=[ 'monai.max','monai.att','monai.att_trans','milmax', 'milmean', 'Attention', 'GatedAttention','Dsmil','milrnn','Dtfd'], type=str, help='use pre-training method')
-
 
 parser.add_argument('--pushtoken', default=False, help='Push Bullet token')
 
@@ -66,14 +65,14 @@ def run_fold(args, fold, txt_name) -> Tuple:
     torch.backends.cudnn.benchmark = True
     # cudnn.deterministic = True
 
-    dataset_train = Dataset_pkl2(path_fold_pkl=os.path.join(args.data_root, 'cv', args.dataset), path_pretrained_pkl_root=os.path.join(args.data_root, 'features', args.dataset, args.pretrain_type), fold_now=fold, fold_all=args.fold, shuffle_slide=True, shuffle_patch=True, split='train', num_classes=args.num_classes, seed=args.seed)
+    dataset_train = Dataset_pkl(path_pretrained_pkl_root=args.data_root, fold_now=fold, fold_all=args.fold, shuffle_slide=True, shuffle_patch=True, split='train', num_classes=args.num_classes, seed=args.seed)
     loader_train = torch.utils.data.DataLoader(dataset_train, batch_size=args.batch_size, shuffle=True, num_workers=args.workers, pin_memory=True)
     
-    dataset_val = Dataset_pkl2(path_fold_pkl=os.path.join(args.data_root, 'cv', args.dataset), path_pretrained_pkl_root=os.path.join(args.data_root, 'features', args.dataset, args.pretrain_type), fold_now=fold, fold_all=args.fold, shuffle_slide=False, shuffle_patch=False, split='val', num_classes=args.num_classes, seed=args.seed)
+    dataset_val = Dataset_pkl(path_pretrained_pkl_root=args.data_root, fold_now=fold, fold_all=args.fold, shuffle_slide=True, shuffle_patch=True, split='val', num_classes=args.num_classes, seed=args.seed)
     loader_val = torch.utils.data.DataLoader(dataset_val, batch_size=args.batch_size, shuffle=False, num_workers=args.workers, pin_memory=True)
 
     args.num_step = len(loader_train)
-    if 'Res18' in args.pretrain_type:
+    if 'Res18' in args.data_root:
         dim_in = 512
     else:
         dim_in = 2048
@@ -104,7 +103,7 @@ def run_fold(args, fold, txt_name) -> Tuple:
 
     auc_best = 0.0
     epoch_best = 0
-    file_name = f'{txt_name}_lr{args.lr}_op_{args.optimizer}_fold{fold}.pth'
+    file_name = f'{txt_name}_lr{args.lr}_fold{fold}.pth'
     for epoch in trange(1, (args.epochs+1)):        
         train(loader_train, model)
         auc, acc = validate(loader_val, model, args)
@@ -118,7 +117,7 @@ def run_fold(args, fold, txt_name) -> Tuple:
         print(f'kk')
     
 
-    dataset_test = Dataset_pkl2(path_fold_pkl='hello my name is test', path_pretrained_pkl_root=os.path.join(args.data_root, 'features', args.dataset, args.pretrain_type), fold_now=999, fold_all=9999, shuffle_slide=False, shuffle_patch=False, split='test', num_classes=args.num_classes, seed=args.seed)
+    dataset_test = Dataset_pkl(path_pretrained_pkl_root=args.data_root, fold_now=999, fold_all=9999, shuffle_slide=False, shuffle_patch=False, split='test', num_classes=args.num_classes, seed=args.seed)
     loader_test = torch.utils.data.DataLoader(dataset_test, batch_size=args.batch_size, shuffle=False, num_workers=args.workers, pin_memory=True)
     
     checkpoint = torch.load(file_name, map_location='cuda:0')
@@ -182,8 +181,9 @@ def validate(val_loader, model, args):
 
 if __name__ == '__main__':
     args = parser.parse_args()
+    args.pretrain_type = args.data_root.split("/")[-2:]
     # txt_name = f'{args.dataset}_{args.pretrain_type}_downstreamLR_{args.lr}_optimizer_{args.optimizer}_epoch{args.epochs}_wd{args.weight_decay}'
-    txt_name = f'nosam_{datetime.today().strftime("%m%d")}_{args.dataset}_{args.pretrain_type}_mil_model_{args.mil_model}_epoch{args.epochs}_wd{args.weight_decay}_scheduler_{args.scheduler}'
+    txt_name = f'nosam_{datetime.today().strftime("%m%d")}_{args.dataset}_{args.pretrain_type}_mil_model_{args.mil_model}_epoch{args.epochs}'
 
     acc_fold_tr = []
     auc_fold_tr = []
@@ -221,7 +221,7 @@ if __name__ == '__main__':
     auc_fold_test = np.mean(auc_fold_test, axis=0)
     
     with open(txt_name + '.txt', 'a' if os.path.isfile(txt_name + '.txt') else 'w') as f:
-        f.write(f'===================== LR-pretrain: {args.pretrain_type} || LR-down: {args.lr} || Optimizer: {args.optimizer} || scheduler: {args.scheduler} =======================\n')
+        f.write(f'===================== LR-pretrain: {args.pretrain_type} || LR-down: {args.lr} =======================\n')
         if args.num_classes == 1:
             f.write(f'AUC TR: {auc_fold_tr[0]}\n')
             f.write(f'AUC VAL: {auc_fold_val[0]}\n')
