@@ -40,7 +40,7 @@ class Attention(MilBase):
         if kwargs['optimizer'] is not None:
             self.optimizer = kwargs['optimizer']
         else:
-            self.optimizer = optim.Adam(self.parameters(), lr=0, betas=(0.9, 0.999), weight_decay=self.args.weight_decay)
+            self.optimizer = optim.Adam(self.parameters(), lr=0, betas=(0.9, 0.999), weight_decay=10e-5)
 
         self.set_optimizer()
         
@@ -134,7 +134,7 @@ class GatedAttention(MilBase):
         if kwargs['optimizer'] is not None:
             self.optimizer = kwargs['optimizer']
         else:
-            self.optimizer = optim.Adam(self.parameters(), lr=0, betas=(0.9, 0.999), weight_decay=self.args.weight_decay)
+            self.optimizer = optim.Adam(self.parameters(), lr=0, betas=(0.9, 0.999), weight_decay=10e-5)
 
         self.set_optimizer()        
         
