@@ -117,6 +117,7 @@ class MilCustom(MilBase):
 
         self.pool = pool
         self.score = nn.Linear(self.dim_latent, self.dim_out, bias=True)
+        
 
     def forward(self, x: torch.Tensor):
         
@@ -169,6 +170,8 @@ class MilTransformer(MilBase):
         self.criterion = nn.BCEWithLogitsLoss()
         self.balance_param = balance_param
         self.cnt_over_thresh = 0
+        
+        self.set_optimizer()
 
     def forward(self, x: torch.Tensor):
 

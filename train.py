@@ -36,24 +36,24 @@ import math
 #     and callable(models.__dict__[name]))
 # /nfs/strange/shared/hazel/stad_simclr_lr1/train
 parser = argparse.ArgumentParser(description='MIL Training')
-parser.add_argument('--data-root', default='/mnt/aitrics_ext/ext01/shared/camelyon16_jpeg_new_pkl/ImageNet_Res50_newstat', help='path to dataset')
+parser.add_argument('--data-root', default='/mnt/aitrics_ext/ext01/shared/camelyon16_eosin_224_16_pkl_0524/swav_res50', help='path to dataset')
 parser.add_argument('--fold', default=5, help='number of fold for cross validation')
-parser.add_argument('-j', '--workers', default=1, type=int, metavar='N', help='number of data loading workers (default: 1)')
-# parser.add_argument('--scheduler', default='single', choices=['single', 'multi'], type=str, help='loss scheduler')
+parser.add_argument('--workers', default=4, type=int, metavar='N', help='number of data loading workers (default: 1)')
+parser.add_argument('--scheduler', default='single', choices=['single', 'multi'], type=str, help='loss scheduler')
 parser.add_argument('--loss', default='bce', choices=['bce'], type=str, help='loss function')
-parser.add_argument('-b', '--batch-size', default=1, type=int, metavar='N', help='the total batch size on the current node (DDP)')
+parser.add_argument('--batch-size', default=1, type=int, metavar='N', help='the total batch size on the current node (DDP)')
 parser.add_argument('--momentum', default=0.9, type=float, help='sgd momentum')
 parser.add_argument('--seed', default=1, type=int, help='seed for initializing training. ')
 
 parser.add_argument('--dataset', default='CAMELYON16', choices=['CAMELYON16', 'tcga_lung', 'tcga_stad'], type=str, help='dataset type')
 # parser.add_argument('--pretrain-type', default='ImageNet_Res50_im', help='weight folder')
 # parser.add_argument('--pretrain-type', default='simclr_lr1', help='weight folder')
-parser.add_argument('--epochs', default=1, type=int, metavar='N', help='number of total epochs to run')
+parser.add_argument('--epochs', default=100, type=int, metavar='N', help='number of total epochs to run')
 # parser.add_argument('--optimizer', default='sgd', choices=['sgd', 'adam', 'adamw'], type=str, help='optimizer')
 parser.add_argument('--lr', default=0.001, type=float, metavar='LR', help='initial learning rate', dest='lr')
 # DTFD: 1e-4, TransMIL: 1e-5
-# parser.add_argument('--wd', '--weight-decay', default=1e-4, type=float, metavar='W', help='weight decay (default: 1e-4)', dest='weight_decay')
-parser.add_argument('--mil-model', default='Dtfd', choices=[ 'monai.max','monai.att','monai.att_trans','milmax', 'milmean', 'Attention', 'GatedAttention','Dsmil','milrnn','Dtfd'], type=str, help='use pre-training method')
+parser.add_argument('--weight-decay', default=1e-5, type=float, metavar='W', help='weight decay (default: 1e-5)', dest='weight_decay')
+parser.add_argument('--mil-model', default='MilTransformer', choices=['MilTransformer', 'monai.max','monai.att','monai.att_trans','milmax', 'milmean', 'Attention', 'GatedAttention','Dsmil','milrnn','Dtfd'], type=str, help='use pre-training method')
 
 parser.add_argument('--pushtoken', default=False, help='Push Bullet token')
 
