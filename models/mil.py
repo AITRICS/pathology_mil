@@ -93,7 +93,7 @@ class MilBase(nn.Module):
         self.optimizer.zero_grad()
         with torch.cuda.amp.autocast():
             loss = self.calculate_objective(X, Y)
-
+        # print("loss: ", loss)
         self.scaler.scale(loss).backward()
         self.scaler.step(self.optimizer)
         self.scaler.update()
@@ -140,6 +140,7 @@ class MilCustom(MilBase):
 # INPUT: #bags x #instances x #dims
 # OUTPUT: #bags x #classes
 
+from models.transformer.encoder import TransformerEncoder
 
 class MilTransformer(MilBase):
 
@@ -161,9 +162,22 @@ class MilTransformer(MilBase):
             self.encoder = encoder()
         
         # self.pool = nn.TransformerEncoder(nn.TransformerEncoderLayer(d_model=dim_latent, nhead=num_heads), num_layers=num_layers, enable_nested_tensor=True)    
-        self.pool = nn.TransformerEncoder(nn.TransformerEncoderLayer(d_model=self.dim_latent, nhead=num_heads, batch_first=False), num_layers=num_layers)    
+        # dim = 512, head = 8, layer = 3
+        # self.pool = nn.TransformerEncoder(nn.TransformerEncoderLayer(d_model=self.dim_latent, nhead=num_heads, batch_first=False), num_layers=num_layers)    
+        # self.pool = TransformerEncoder(d_input = self.dim_latent, 
+        #          n_layers = num_layers, 
+        #          n_head = num_heads,
+        #          d_model = self.dim_latent, 
+        #          d_ff = self.dim_latent * 4, 
+        #          use_pe = False)    
+        self.pool = TransformerEncoder(d_input = self.dim_latent, 
+                 n_layers = 12, 
+                 n_head = 8,
+                 d_model = self.dim_latent, 
+                 d_ff = self.dim_latent*2, 
+                 use_pe = False)    
         self.cls_token = nn.Parameter(torch.zeros(1, 1, self.dim_latent, requires_grad=True))
-
+        
         self.score_bag = nn.Linear(self.dim_latent, self.dim_out, bias=True)
         self.score_instance = nn.Linear(self.dim_latent, self.dim_out, bias=True)
         self.share_proj = share_proj
@@ -174,13 +188,16 @@ class MilTransformer(MilBase):
         self.set_optimizer()
 
     def forward(self, x: torch.Tensor):
-
+        # print("0: ", x.shape)
         x = torch.cat([self.cls_token, self.encoder(x)], dim=1) # #slide x (1 + #patches) x dim_latent
-
         x = x.transpose(0, 1)
+        # print("1: ", x.shape)
+        # print("transformer: ", self.pool)
+        # exit(1)
         x = self.pool(x)
+        # print("2: ", x.shape)
         x = x.transpose(0, 1) #  #slide x (1 + #patches) x dim_latent
-
+        # print("self.share_proj: ", self.share_proj)
         if self.share_proj:
             # #slide x #dim_out,  # #slide x #patches x #dim_out
             return self.score_bag(x[:, 0, :]), self.score_bag(x[:, 1:, :])
