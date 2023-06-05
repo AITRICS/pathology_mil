@@ -28,10 +28,10 @@ class ScaledDotProductAttention(nn.Module):
             value: Tensor,
             mask: Optional[Any] = None
     ) -> Tuple[Tensor, Tensor]:
-        score = ((torch.nan_to_num(torch.bmm(query, key.transpose(1, 2)), nan=0.0, posinf=1.0)) / self.sqrt_dim)  # + 2e-10
-        # score = ((torch.bmm(query, key.transpose(1, 2))) / self.sqrt_dim)  # + 2e-10
-        attn = torch.nan_to_num(F.softmax(score, -1), nan=0.0, posinf=1.0)
-        # attn = F.softmax(score, -1)
+        # score = ((torch.nan_to_num(torch.bmm(query, key.transpose(1, 2)), nan=0.0, posinf=1.0)) / self.sqrt_dim)  # + 2e-10
+        score = ((torch.bmm(query, key.transpose(1, 2))) / self.sqrt_dim)  # + 2e-10
+        # attn = torch.nan_to_num(F.softmax(score, -1), nan=0.0, posinf=1.0)
+        attn = F.softmax(score, -1)
         context = torch.bmm(attn, value)
         return context, attn
 
