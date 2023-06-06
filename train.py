@@ -55,6 +55,7 @@ parser.add_argument('--lr', default=0.0001, type=float, metavar='LR', help='init
 parser.add_argument('--weight-decay', default=1e-5, type=float, metavar='W', help='weight decay (default: 1e-5)', dest='weight_decay')
 parser.add_argument('--mil-model', default='MilTransformer', choices=['MilTransformer', 'monai.max','monai.att','monai.att_trans','milmax', 'milmean', 'Attention', 'GatedAttention','Dsmil','milrnn','Dtfd'], type=str, help='use pre-training method')
 parser.add_argument('--if-learn-instance', default=False, help='if_learn_instance')
+parser.add_argument('--share-proj', default=False, help='if share projection')
 parser.add_argument('--pseudo-prob-threshold', default=0.8, type=float, help='pseudo_prob_threshold')
 
 parser.add_argument('--pushtoken', default=False, help='Push Bullet token')
@@ -83,7 +84,7 @@ def run_fold(args, fold, txt_name) -> Tuple:
         mode = args.mil_model.split('.')[-1]
         model = milmodels.__dict__['MonaiMil'](dim_in=dim_in, dim_latent=512, dim_out=args.num_classes, mil_mode=mode).cuda()
     elif args.mil_model == 'MilTransformer':
-        model = milmodels.__dict__[args.mil_model](args=args, if_learn_instance=args.if_learn_instance, pseudo_prob_threshold=args.pseudo_prob_threshold, optimizer=None, criterion=None, scheduler=None, dim_in=dim_in, dim_latent=512, dim_out=args.num_classes).cuda()
+        model = milmodels.__dict__[args.mil_model](args=args, if_learn_instance=args.if_learn_instance, pseudo_prob_threshold=args.pseudo_prob_threshold, share_proj=args.share_proj, optimizer=None, criterion=None, scheduler=None, dim_in=dim_in, dim_latent=512, dim_out=args.num_classes).cuda()
     else:
         model = milmodels.__dict__[args.mil_model](args=args, optimizer=None, criterion=None, scheduler=None, dim_in=dim_in, dim_latent=512, dim_out=args.num_classes).cuda()
     
@@ -188,7 +189,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     args.pretrain_type = args.data_root.split("/")[-2:]
     # txt_name = f'{args.dataset}_{args.pretrain_type}_downstreamLR_{args.lr}_optimizer_{args.optimizer}_epoch{args.epochs}_wd{args.weight_decay}'
-    txt_name = f'nosam_{datetime.today().strftime("%m%d")}_{args.dataset}_{args.pretrain_type}_mil_model_{args.mil_model}_epoch{args.epochs}'
+    txt_name = f'nosam_{datetime.today().strftime("%m%d")}_{args.dataset}_{args.pretrain_type}_mil_model_{args.mil_model}_epoch{args.epochs}_share_proj{args.share_proj}_if_learn_instance{args.if_learn_instance}'
 
     acc_fold_tr = []
     auc_fold_tr = []

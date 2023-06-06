@@ -42,10 +42,11 @@
 gpu=0
 dataset=CAMELYON16
 milmodel=MilTransformer
+share_proj=True
 data_root=/mnt/aitrics_ext/ext01/shared/camelyon16_eosin_224_16_pkl_0524/swav_res50
 for if_learn_instance in True False; do
     for lr_downstream in 0.0003 0.0001 0.00003 0.00001; do 
-        CUDA_VISIBLE_DEVICES=$gpu nohup python train.py --data-root $data_root --mil-model $milmodel --dataset $dataset --epochs 100 --lr $lr_downstream --if-learn-instance $if_learn_instance --pushtoken o.OsyxHt1pZuwUBoMEFYBuzHFNjV5ekr95 > LR_${lr_downstream}_milmodel_${milmodel}_gpu_${gpu}.txt &
+        CUDA_VISIBLE_DEVICES=$gpu nohup python train.py --data-root $data_root --mil-model $milmodel --dataset $dataset --epochs 100 --share-proj $share_proj --lr $lr_downstream --if-learn-instance $if_learn_instance --pushtoken o.OsyxHt1pZuwUBoMEFYBuzHFNjV5ekr95 > LR_${lr_downstream}_milmodel_${milmodel}_gpu_${gpu}.txt &
         (( gpu+=1 ))        
     done
 done
