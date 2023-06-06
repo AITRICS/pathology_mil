@@ -49,6 +49,8 @@ class TransformerEncoderLayer_Afternorm(nn.Module):
         self.dropout = nn.Dropout(dropout_p)
 
     def forward(self, inputs: Tensor, self_attn_mask: Tensor = None) -> Tuple[Tensor, Tensor]:
+        # INPUT:  minibatch x token x dim
+        # OUTPUT: minibatch x token x dim
         residual = inputs
         outputs, attn = self.self_attention(inputs, inputs, inputs, self_attn_mask)
         outputs = self.dropout(outputs)
@@ -98,21 +100,12 @@ class TransformerEncoder(nn.Module):
             ) for _ in range(n_layers)
         ])
 
-    def forward(self, padded_input):
-        # Forward
-        # if self.input_linear:
-        #     padded_input = self.linear_in(padded_input)
-        
-        # if self.use_pe:
-        #     enc_output = self.dropout(
-        #         self.layer_norm_in(padded_input) +
-        #         self.positional_encoding(padded_input.size(1)))
+    def forward(self, enc_input):
+        # enc_input:  minibatch x token x dim
+        # enc_output: minibatch x token x dim
 
-        # else:
-        #     enc_output = self.dropout(
-        #         self.layer_norm_in(padded_input))
         enc_output = self.dropout(
-            self.layer_norm_in(padded_input))
+            self.layer_norm_in(enc_input))
            
         for enc_layer in self.layer_stack:
             enc_output, enc_slf_attn = enc_layer(enc_output, None)

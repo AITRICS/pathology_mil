@@ -171,8 +171,8 @@ class MilTransformer(MilBase):
         #          d_ff = self.dim_latent * 4, 
         #          use_pe = False)    
         self.pool = TransformerEncoder(d_input = self.dim_latent, 
-                 n_layers = 12, 
-                 n_head = 8,
+                 n_layers = 1, 
+                 n_head = 1,
                  d_model = self.dim_latent, 
                  d_ff = self.dim_latent*2, 
                  use_pe = False)    
@@ -188,16 +188,10 @@ class MilTransformer(MilBase):
         self.set_optimizer()
 
     def forward(self, x: torch.Tensor):
-        # print("0: ", x.shape)
         x = torch.cat([self.cls_token, self.encoder(x)], dim=1) # #slide x (1 + #patches) x dim_latent
-        x = x.transpose(0, 1)
-        # print("1: ", x.shape)
-        # print("transformer: ", self.pool)
-        # exit(1)
+
         x = self.pool(x)
-        # print("2: ", x.shape)
-        x = x.transpose(0, 1) #  #slide x (1 + #patches) x dim_latent
-        # print("self.share_proj: ", self.share_proj)
+
         if self.share_proj:
             # #slide x #dim_out,  # #slide x #patches x #dim_out
             return self.score_bag(x[:, 0, :]), self.score_bag(x[:, 1:, :])
