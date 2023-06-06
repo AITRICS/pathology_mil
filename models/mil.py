@@ -175,6 +175,7 @@ class MilTransformer(MilBase):
                  n_head = 2,
                  d_model = self.dim_latent, 
                  d_ff = self.dim_latent*2, 
+                 sr_ratio = 2,
                  use_pe = False)    
         self.cls_token = nn.Parameter(torch.zeros(1, 1, self.dim_latent, requires_grad=True))
         
@@ -189,7 +190,6 @@ class MilTransformer(MilBase):
 
     def forward(self, x: torch.Tensor):
         x = torch.cat([self.cls_token, self.encoder(x)], dim=1) # #slide x (1 + #patches) x dim_latent
-
         x = self.pool(x)
 
         if self.share_proj:

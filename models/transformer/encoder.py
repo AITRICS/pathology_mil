@@ -40,11 +40,12 @@ class Efficient_TransformerEncoderLayer_Afternorm(nn.Module):
             num_heads: int = 8,             # number of attention heads
             d_ff: int = 2048,               # dimension of feed forward network
             dropout_p: float = 0.3,         # probability of dropout
+            sr_ratio: int = 1,              # reduction ratio
     ) -> None:
         super(Efficient_TransformerEncoderLayer_Afternorm, self).__init__()
         self.attention_prenorm = LayerNorm(d_model)
         self.feed_forward_prenorm = LayerNorm(d_model)
-        self.self_attention = EfficientMultiHeadAttention(d_model, num_heads)
+        self.self_attention = EfficientMultiHeadAttention(d_model, num_heads, sr_ratio=sr_ratio)
         self.feed_forward = FeedForwardUseConv(d_model, d_ff, dropout_p)
         self.dropout = nn.Dropout(dropout_p)
 
@@ -76,6 +77,7 @@ class TransformerEncoder(nn.Module):
                  d_ff: int, 
                  dropout: float = 0.1, 
                  pe_maxlen: int = 5000, 
+                 sr_ratio: int = 1,
                  use_pe: bool = True):
         super(TransformerEncoder, self).__init__()
         # parameters
@@ -96,7 +98,8 @@ class TransformerEncoder(nn.Module):
                 d_model=d_model,
                 num_heads=n_head,
                 d_ff=d_ff,
-                dropout_p=dropout
+                dropout_p=dropout,
+                sr_ratio=sr_ratio,
             ) for _ in range(n_layers)
         ])
 

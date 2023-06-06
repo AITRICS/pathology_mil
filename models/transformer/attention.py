@@ -79,7 +79,7 @@ class MultiHeadAttention(nn.Module):
         return context, attn
 
 class EfficientMultiHeadAttention(nn.Module):
-    def __init__(self, dim: int = 512, num_heads: int = 8, block_mask: list = None) -> None:
+    def __init__(self, dim: int = 512, num_heads: int = 8, block_mask: list = None, sr_ratio: int = 1) -> None:
         super(EfficientMultiHeadAttention, self).__init__()
 
         assert dim % num_heads == 0, "hidden_dim % num_heads should be zero."
@@ -88,9 +88,11 @@ class EfficientMultiHeadAttention(nn.Module):
         self.num_heads = num_heads
         self.query_proj = Linear(dim, self.d_head * num_heads)
         
-        self.norm = nn.LayerNorm(dim)
-        sr_ratio = 2
-        self.sr = nn.Conv1d(dim, dim, kernel_size=sr_ratio, stride=sr_ratio)
+        self.sr_ratio = sr_ratio
+        if sr_ratio > 1:
+            self.sr = nn.Conv1d(dim, dim, kernel_size=sr_ratio, stride=sr_ratio)
+            self.norm = nn.LayerNorm(dim)
+            
         self.kv = nn.Linear(dim, dim * 2)
         
         self.scaled_dot_attn = ScaledDotProductAttention(self.d_head, scale=True)
@@ -100,9 +102,11 @@ class EfficientMultiHeadAttention(nn.Module):
 
         query = self.query_proj(x).view(batch_size, -1, self.num_heads, self.d_head)
         
-        x_ = self.sr(x.permute(0,2,1)).permute(0, 2, 1)
-        x_ = self.norm(x_)
+        if self.sr_ratio > 1:
+            x_ = self.sr(x.permute(0,2,1)).permute(0, 2, 1)
+            x_ = self.norm(x_)
         kv = self.kv(x_)
+        
         kv = kv.reshape(batch_size, -1, 2, self.num_heads, self.d_head).permute(2, 0, 3, 1, 4)
         key, value = kv[0], kv[1]
 
