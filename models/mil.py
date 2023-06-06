@@ -172,7 +172,7 @@ class MilTransformer(MilBase):
         #          use_pe = False)    
         self.pool = TransformerEncoder(d_input = self.dim_latent, 
                  n_layers = 1, 
-                 n_head = 1,
+                 n_head = 2,
                  d_model = self.dim_latent, 
                  d_ff = self.dim_latent*2, 
                  use_pe = False)    

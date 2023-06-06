@@ -1,7 +1,7 @@
 import torch.nn as nn
 from torch import Tensor
 from typing import Tuple
-from models.transformer.attention import MultiHeadAttention
+from models.transformer.attention import MultiHeadAttention, EfficientMultiHeadAttention
 from models.transformer.module import PositionalEncoding, FeedForward, LayerNorm, FeedForwardUseConv
 from models.transformer.utils import *
 
@@ -33,7 +33,7 @@ class TransformerEncoderLayer(nn.Module):
 
         return outputs, attn
     
-class TransformerEncoderLayer_Afternorm(nn.Module):
+class Efficient_TransformerEncoderLayer_Afternorm(nn.Module):
     def __init__(
             self,
             d_model: int = 512,             # dimension of transformer model
@@ -41,10 +41,10 @@ class TransformerEncoderLayer_Afternorm(nn.Module):
             d_ff: int = 2048,               # dimension of feed forward network
             dropout_p: float = 0.3,         # probability of dropout
     ) -> None:
-        super(TransformerEncoderLayer_Afternorm, self).__init__()
+        super(Efficient_TransformerEncoderLayer_Afternorm, self).__init__()
         self.attention_prenorm = LayerNorm(d_model)
         self.feed_forward_prenorm = LayerNorm(d_model)
-        self.self_attention = MultiHeadAttention(d_model, num_heads)
+        self.self_attention = EfficientMultiHeadAttention(d_model, num_heads)
         self.feed_forward = FeedForwardUseConv(d_model, d_ff, dropout_p)
         self.dropout = nn.Dropout(dropout_p)
 
@@ -52,7 +52,7 @@ class TransformerEncoderLayer_Afternorm(nn.Module):
         # INPUT:  minibatch x token x dim
         # OUTPUT: minibatch x token x dim
         residual = inputs
-        outputs, attn = self.self_attention(inputs, inputs, inputs, self_attn_mask)
+        outputs, attn = self.self_attention(inputs, self_attn_mask)
         outputs = self.dropout(outputs)
         outputs += residual
         outputs = self.attention_prenorm(outputs)
@@ -92,7 +92,7 @@ class TransformerEncoder(nn.Module):
         self.dropout = nn.Dropout(dropout)
         
         self.layer_stack = nn.ModuleList([
-            TransformerEncoderLayer_Afternorm(
+            Efficient_TransformerEncoderLayer_Afternorm(
                 d_model=d_model,
                 num_heads=n_head,
                 d_ff=d_ff,
