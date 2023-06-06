@@ -35,7 +35,7 @@ import math
 #     if name.islower() and not name.startswith("__")
 #     and callable(models.__dict__[name]))
 # /nfs/strange/shared/hazel/stad_simclr_lr1/train
-parser = argparse.ArgumentParser(description='MIL Training')
+parser = argparse.ArgumentParser(description='MIL Training') 
 parser.add_argument('--data-root', default='/mnt/aitrics_ext/ext01/shared/camelyon16_eosin_224_16_pkl_0524/swav_res50', help='path to dataset')
 parser.add_argument('--fold', default=5, help='number of fold for cross validation')
 parser.add_argument('--workers', default=4, type=int, metavar='N', help='number of data loading workers (default: 1)')
@@ -50,10 +50,12 @@ parser.add_argument('--dataset', default='CAMELYON16', choices=['CAMELYON16', 't
 # parser.add_argument('--pretrain-type', default='simclr_lr1', help='weight folder')
 parser.add_argument('--epochs', default=100, type=int, metavar='N', help='number of total epochs to run')
 # parser.add_argument('--optimizer', default='sgd', choices=['sgd', 'adam', 'adamw'], type=str, help='optimizer')
-parser.add_argument('--lr', default=0.001, type=float, metavar='LR', help='initial learning rate', dest='lr')
+parser.add_argument('--lr', default=0.0001, type=float, metavar='LR', help='initial learning rate', dest='lr')
 # DTFD: 1e-4, TransMIL: 1e-5
 parser.add_argument('--weight-decay', default=1e-5, type=float, metavar='W', help='weight decay (default: 1e-5)', dest='weight_decay')
 parser.add_argument('--mil-model', default='MilTransformer', choices=['MilTransformer', 'monai.max','monai.att','monai.att_trans','milmax', 'milmean', 'Attention', 'GatedAttention','Dsmil','milrnn','Dtfd'], type=str, help='use pre-training method')
+parser.add_argument('--if-learn-instance', default=False, help='if_learn_instance')
+parser.add_argument('--pseudo-prob-threshold', default=0.8, type=float, help='pseudo_prob_threshold')
 
 parser.add_argument('--pushtoken', default=False, help='Push Bullet token')
 
@@ -80,6 +82,8 @@ def run_fold(args, fold, txt_name) -> Tuple:
     if 'monai' in args.mil_model:
         mode = args.mil_model.split('.')[-1]
         model = milmodels.__dict__['MonaiMil'](dim_in=dim_in, dim_latent=512, dim_out=args.num_classes, mil_mode=mode).cuda()
+    elif args.mil_model == 'MilTransformer':
+        model = milmodels.__dict__[args.mil_model](args=args, if_learn_instance=args.if_learn_instance, pseudo_prob_threshold=args.pseudo_prob_threshold, optimizer=None, criterion=None, scheduler=None, dim_in=dim_in, dim_latent=512, dim_out=args.num_classes).cuda()
     else:
         model = milmodels.__dict__[args.mil_model](args=args, optimizer=None, criterion=None, scheduler=None, dim_in=dim_in, dim_latent=512, dim_out=args.num_classes).cuda()
     
@@ -129,6 +133,7 @@ def run_fold(args, fold, txt_name) -> Tuple:
 
     del dataset_train, loader_train, dataset_val, loader_val
     print(f'fold [{fold}]: epoch_best ==> {epoch_best}')
+    print(f'auc_tr: {auc_tr}, auc_val: {auc_val}, auc_test: {auc_test},')
     
     return auc_test, acc_test, auc_val, acc_val, auc_tr, acc_tr, dataset_test.category_idx, epoch_best
 
