@@ -189,7 +189,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     args.pretrain_type = args.data_root.split("/")[-2:]
     # txt_name = f'{args.dataset}_{args.pretrain_type}_downstreamLR_{args.lr}_optimizer_{args.optimizer}_epoch{args.epochs}_wd{args.weight_decay}'
-    txt_name = f'nosam_{datetime.today().strftime("%m%d")}_{args.dataset}_{args.pretrain_type}_mil_model_{args.mil_model}_epoch{args.epochs}_share_proj{args.share_proj}_if_learn_instance{args.if_learn_instance}'
+    txt_name = f'nosam_{datetime.today().strftime("%m%d")}_{args.dataset}_{args.pretrain_type}_mil_model_{args.mil_model}_epoch{args.epochs}_share_proj{args.share_proj}_if_learn_instance{args.if_learn_instance}_pseudo_prob_threshold{args.pseudo_prob_threshold}'
 
     acc_fold_tr = []
     auc_fold_tr = []
