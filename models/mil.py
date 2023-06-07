@@ -144,7 +144,8 @@ from models.transformer.encoder import TransformerEncoder
 
 class MilTransformer(MilBase):
 
-    def __init__(self, encoder=None, num_heads=8, num_layers=3, share_proj=False, balance_param=math.log(39./252.),  **kwargs):
+    # def __init__(self, encoder=None, num_heads=8, num_layers=3, share_proj=False, balance_param=math.log(39./252.),  **kwargs):
+    def __init__(self, if_learn_instance, pseudo_prob_threshold, encoder=None, share_proj=True, balance_param=0, **kwargs):
         super().__init__(**kwargs)
 
         if encoder == None:
@@ -171,11 +172,11 @@ class MilTransformer(MilBase):
         #          d_ff = self.dim_latent * 4, 
         #          use_pe = False)    
         self.pool = TransformerEncoder(d_input = self.dim_latent, 
-                 n_layers = 1, 
+                 n_layers = 2, 
                  n_head = 2,
                  d_model = self.dim_latent, 
                  d_ff = self.dim_latent*2, 
-                 sr_ratio = 2,
+                 sr_ratio = 8,
                  use_pe = False,
                  layerwise_shuffle = True)    
         self.cls_token = nn.Parameter(torch.zeros(1, 1, self.dim_latent, requires_grad=True))
@@ -186,6 +187,8 @@ class MilTransformer(MilBase):
         self.criterion = nn.BCEWithLogitsLoss()
         self.balance_param = balance_param
         self.cnt_over_thresh = 0
+        self.if_learn_instance = if_learn_instance
+        self.pseudo_prob_threshold = pseudo_prob_threshold
         
         self.set_optimizer()
 
@@ -201,7 +204,7 @@ class MilTransformer(MilBase):
             # #slide x #dim_out,  # #slide x #patches x #dim_out
             return self.score_bag(x[:, 0, :]), self.score_instance(x[:, 1:, :])
     
-    def calculate_objective(self, X, Y, if_learn_instance:bool=False, pseudo_prob_threshold=0.8):
+    def calculate_objective(self, X, Y):
         # X: #bag x (1 + #patches) x dim_latent
         # Y: #bag x #classes
         logit_bag, logit_instance = self.forward(X)
@@ -209,7 +212,7 @@ class MilTransformer(MilBase):
         # logit_instance: #bag x #instance x #classes
         loss = self.criterion(logit_bag + self.balance_param, Y)
 
-        if if_learn_instance:
+        if self.if_learn_instance:
             if Y == 0:
                 # loss_instance = torchvision.ops.sigmoid_focal_loss(logit_instance+math.log(39./252.), target.unsqueeze(1).repeat(logit_instance.size(0), logit_instance.size(1), logit_instance.size(2)), reduction='mean')
                 loss_instance = self.criterion(logit_instance+self.balance_param, Y.unsqueeze(1).expand(logit_instance.size(0), logit_instance.size(1), logit_instance.size(2)))
@@ -219,10 +222,10 @@ class MilTransformer(MilBase):
                 # #patches x num_class
                 prob_instance = F.sigmoid(logit_instance)
                 pseudo_label_positive = torch.zeros_like(prob_instance, device=X.device)
-                pseudo_label_positive[prob_instance>pseudo_prob_threshold] = 1.0
+                pseudo_label_positive[prob_instance>self.pseudo_prob_threshold] = 1.0
                 
                 mask = pseudo_label_positive.detach().clone()
-                mask[prob_instance<(1.0-pseudo_prob_threshold)]=1.0
+                mask[prob_instance<(1.0-self.pseudo_prob_threshold)]=1.0
                 if (torch.sum(pseudo_label_positive) < 1):
                     # loss_instance = torchvision.ops.sigmoid_focal_loss(torch.max(logit_instance)+math.log(39./252.), torch.ones([], device=args.device))
                     loss_instance = self.criterion(torch.max(logit_instance) + self.balance_param, torch.ones([], device=X.device))
