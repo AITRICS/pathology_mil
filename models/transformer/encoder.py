@@ -78,7 +78,8 @@ class TransformerEncoder(nn.Module):
                  dropout: float = 0.1, 
                  pe_maxlen: int = 5000, 
                  sr_ratio: int = 1,
-                 use_pe: bool = True):
+                 use_pe: bool = True,
+                 layerwise_shuffle: bool = False):
         super(TransformerEncoder, self).__init__()
         # parameters
         self.use_pe = use_pe
@@ -92,7 +93,7 @@ class TransformerEncoder(nn.Module):
         self.layer_norm_in = nn.LayerNorm(d_model)
         self.positional_encoding = PositionalEncoding(d_model, max_len=pe_maxlen)
         self.dropout = nn.Dropout(dropout)
-        
+        self.layerwise_shuffle = layerwise_shuffle
         self.layer_stack = nn.ModuleList([
             Efficient_TransformerEncoderLayer_Afternorm(
                 d_model=d_model,
@@ -111,6 +112,12 @@ class TransformerEncoder(nn.Module):
             self.layer_norm_in(enc_input))
            
         for enc_layer in self.layer_stack:
+            if self.layerwise_shuffle:
+                idx = torch.randperm(enc_output.size(1)-1)
+                cls_token = enc_output[:,0,:].unsqueeze(1)
+                enc_output_shuffle = enc_output[:,1:,]
+                enc_output_shuffle = enc_output_shuffle[:, idx, :]
+                enc_output = torch.cat([cls_token, enc_output_shuffle], dim=1) # #slide x (1 + #patches) x dim_latent
             enc_output, enc_slf_attn = enc_layer(enc_output, None)
         
         return enc_output
