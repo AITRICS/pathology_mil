@@ -97,15 +97,15 @@ class EfficientMultiHeadAttention(nn.Module):
         
         self.scaled_dot_attn = ScaledDotProductAttention(self.d_head, scale=True)
 
-    def forward(self, x: Tensor, mask: Optional[Any] = None) -> Tuple[Tensor, Tensor]:
+    def forward(self, x: Tensor, x_kv: Tensor, mask: Optional[Any] = None) -> Tuple[Tensor, Tensor]:
         batch_size = x.size(0)
 
         query = self.query_proj(x).view(batch_size, -1, self.num_heads, self.d_head)
         
         if self.sr_ratio > 1:
-            x_ = self.sr(x.permute(0,2,1)).permute(0, 2, 1)
-            x_ = self.norm(x_)
-        kv = self.kv(x_)
+            x_kv = self.sr(x_kv.permute(0,2,1)).permute(0, 2, 1)
+            x_kv = self.norm(x_kv)
+        kv = self.kv(x_kv)
         
         kv = kv.reshape(batch_size, -1, 2, self.num_heads, self.d_head).permute(2, 0, 3, 1, 4)
         key, value = kv[0], kv[1]

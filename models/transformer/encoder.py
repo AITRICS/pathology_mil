@@ -41,6 +41,7 @@ class Efficient_TransformerEncoderLayer_Afternorm(nn.Module):
             d_ff: int = 2048,               # dimension of feed forward network
             dropout_p: float = 0.3,         # probability of dropout
             sr_ratio: int = 1,              # reduction ratio
+            layerwise_shuffle: bool = False,
     ) -> None:
         super(Efficient_TransformerEncoderLayer_Afternorm, self).__init__()
         self.attention_prenorm = LayerNorm(d_model)
@@ -48,12 +49,20 @@ class Efficient_TransformerEncoderLayer_Afternorm(nn.Module):
         self.self_attention = EfficientMultiHeadAttention(d_model, num_heads, sr_ratio=sr_ratio)
         self.feed_forward = FeedForwardUseConv(d_model, d_ff, dropout_p)
         self.dropout = nn.Dropout(dropout_p)
+        self.layerwise_shuffle = layerwise_shuffle
 
     def forward(self, inputs: Tensor, self_attn_mask: Tensor = None) -> Tuple[Tensor, Tensor]:
         # INPUT:  minibatch x token x dim
         # OUTPUT: minibatch x token x dim
+        if self.layerwise_shuffle:
+            idx = torch.randperm(inputs.size(1)-1)
+            cls_token = inputs[:,0,:].unsqueeze(1)
+            enc_output_shuffle = inputs[:,1:,]
+            enc_output_shuffle = enc_output_shuffle[:, idx, :]
+            kv_inputs = torch.cat([cls_token, enc_output_shuffle], dim=1) # #slide x (1 + #patches) x dim_latent
+        
         residual = inputs
-        outputs, attn = self.self_attention(inputs, self_attn_mask)
+        outputs, attn = self.self_attention(inputs, kv_inputs, self_attn_mask)
         outputs = self.dropout(outputs)
         outputs += residual
         outputs = self.attention_prenorm(outputs)
@@ -93,7 +102,7 @@ class TransformerEncoder(nn.Module):
         self.layer_norm_in = nn.LayerNorm(d_model)
         self.positional_encoding = PositionalEncoding(d_model, max_len=pe_maxlen)
         self.dropout = nn.Dropout(dropout)
-        self.layerwise_shuffle = layerwise_shuffle
+        
         self.layer_stack = nn.ModuleList([
             Efficient_TransformerEncoderLayer_Afternorm(
                 d_model=d_model,
@@ -101,6 +110,7 @@ class TransformerEncoder(nn.Module):
                 d_ff=d_ff,
                 dropout_p=dropout,
                 sr_ratio=sr_ratio,
+                layerwise_shuffle=layerwise_shuffle,
             ) for _ in range(n_layers)
         ])
 
@@ -112,12 +122,6 @@ class TransformerEncoder(nn.Module):
             self.layer_norm_in(enc_input))
            
         for enc_layer in self.layer_stack:
-            if self.layerwise_shuffle:
-                idx = torch.randperm(enc_output.size(1)-1)
-                cls_token = enc_output[:,0,:].unsqueeze(1)
-                enc_output_shuffle = enc_output[:,1:,]
-                enc_output_shuffle = enc_output_shuffle[:, idx, :]
-                enc_output = torch.cat([cls_token, enc_output_shuffle], dim=1) # #slide x (1 + #patches) x dim_latent
             enc_output, enc_slf_attn = enc_layer(enc_output, None)
         
         return enc_output
