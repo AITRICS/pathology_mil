@@ -57,6 +57,9 @@ parser.add_argument('--mil-model', default='MilTransformer', choices=['MilTransf
 parser.add_argument('--if-learn-instance', default=False, help='if_learn_instance')
 parser.add_argument('--share-proj', default=False, help='if share projection')
 parser.add_argument('--pseudo-prob-threshold', default=0.8, type=float, help='pseudo_prob_threshold')
+parser.add_argument('--layerwise-shuffle', default=False, help='Shuffle')
+parser.add_argument('--n-head', default=2, type=int, help='Number of head')
+parser.add_argument('--sr-ratio', default=8, type=int, help='self-attention grouping ratio')
 
 parser.add_argument('--pushtoken', default=False, help='Push Bullet token')
 
@@ -188,8 +191,9 @@ def validate(val_loader, model, args):
 if __name__ == '__main__':
     args = parser.parse_args()
     args.pretrain_type = args.data_root.split("/")[-2:]
-    # txt_name = f'{args.dataset}_{args.pretrain_type}_downstreamLR_{args.lr}_optimizer_{args.optimizer}_epoch{args.epochs}_wd{args.weight_decay}'
-    txt_name = f'nosam_{datetime.today().strftime("%m%d")}_{args.dataset}_{args.pretrain_type}_mil_model_{args.mil_model}_epoch{args.epochs}_share_proj{args.share_proj}_if_learn_instance{args.if_learn_instance}_pseudo_prob_threshold{args.pseudo_prob_threshold}'
+    # txt_name = f'{args.dataset}_{args.pretrain_type}_downstreamLR_{args.lr}_optimizer_{args.optimizer}_epoch{args.epochs}_wd{args.weight_decay}'    
+    txt_name = f'{datetime.today().strftime("%m%d")}_{args.dataset}_{args.mil_model}_epoch{args.epochs}_share_proj{args.share_proj}_' +\
+    f'if_learn_instance{args.if_learn_instance}_pseudo_prob_threshold{args.pseudo_prob_threshold}_n_head{args.n_head}_sr_ratio{args.sr_ratio}_layerwise_shuffle{args.layerwise_shuffle}'
 
     acc_fold_tr = []
     auc_fold_tr = []
