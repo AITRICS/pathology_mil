@@ -60,7 +60,6 @@ parser.add_argument('--pseudo-prob-threshold', default=0.8, type=float, help='ps
 parser.add_argument('--layerwise-shuffle', default=False, help='Shuffle')
 parser.add_argument('--n-head', default=2, type=int, help='Number of head')
 parser.add_argument('--sr-ratio', default=8, type=int, help='self-attention grouping ratio')
-parser.add_argument('--sr-ratio', default=8, type=int, help='self-attention grouping ratio')
 parser.add_argument('--if-balance-param', default=False, help='balance_param')
 
 parser.add_argument('--pushtoken', default=False, help='Push Bullet token')
