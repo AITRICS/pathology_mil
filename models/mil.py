@@ -145,7 +145,7 @@ from models.transformer.encoder import TransformerEncoder
 class MilTransformer(MilBase):
 
     # def __init__(self, encoder=None, num_heads=8, num_layers=3, share_proj=False, balance_param=math.log(39./252.),  **kwargs):
-    def __init__(self, if_learn_instance, pseudo_prob_threshold, encoder=None, share_proj=True, balance_param=0, **kwargs):
+    def __init__(self, if_learn_instance, pseudo_prob_threshold, encoder=None, share_proj=True, **kwargs):
         super().__init__(**kwargs)
 
         if encoder == None:
@@ -185,7 +185,6 @@ class MilTransformer(MilBase):
         self.score_instance = nn.Linear(self.dim_latent, self.dim_out, bias=True)
         self.share_proj = share_proj
         self.criterion = nn.BCEWithLogitsLoss()
-        self.balance_param = balance_param
         self.cnt_over_thresh = 0
         self.if_learn_instance = if_learn_instance
         self.pseudo_prob_threshold = pseudo_prob_threshold
@@ -210,12 +209,12 @@ class MilTransformer(MilBase):
         logit_bag, logit_instance = self.forward(X)
         # logit_bag: #bag x #classes
         # logit_instance: #bag x #instance x #classes
-        loss = self.criterion(logit_bag + self.balance_param, Y)
+        loss = self.criterion(logit_bag + self.args.balance_param, Y)
 
         if self.if_learn_instance:
             if Y == 0:
                 # loss_instance = torchvision.ops.sigmoid_focal_loss(logit_instance+math.log(39./252.), target.unsqueeze(1).repeat(logit_instance.size(0), logit_instance.size(1), logit_instance.size(2)), reduction='mean')
-                loss_instance = self.criterion(logit_instance+self.balance_param, Y.unsqueeze(1).expand(logit_instance.size(0), logit_instance.size(1), logit_instance.size(2)))
+                loss_instance = self.criterion(logit_instance+self.args.balance_param, Y.unsqueeze(1).expand(logit_instance.size(0), logit_instance.size(1), logit_instance.size(2)))
             else:
                 #slide x #patches x num_class
                 # logit_instance = logit_instance.squeeze(0)
@@ -228,10 +227,10 @@ class MilTransformer(MilBase):
                 mask[prob_instance<(1.0-self.pseudo_prob_threshold)]=1.0
                 if (torch.sum(pseudo_label_positive) < 1):
                     # loss_instance = torchvision.ops.sigmoid_focal_loss(torch.max(logit_instance)+math.log(39./252.), torch.ones([], device=args.device))
-                    loss_instance = self.criterion(torch.max(logit_instance) + self.balance_param, torch.ones([], device=X.device))
+                    loss_instance = self.criterion(torch.max(logit_instance) + self.args.balance_param, torch.ones([], device=X.device))
                 else:
                     # loss_instance = torch.sum(mask * torchvision.ops.sigmoid_focal_loss(logit_instance+math.log(39./252.), pseudo_label_positive))/torch.sum(mask)
-                    loss_instance = torch.sum(mask * F.binary_cross_entropy_with_logits(logit_instance + self.balance_param, pseudo_label_positive, reduction='none'))/torch.sum(mask)
+                    loss_instance = torch.sum(mask * F.binary_cross_entropy_with_logits(logit_instance + self.args.balance_param, pseudo_label_positive, reduction='none'))/torch.sum(mask)
                     self.cnt_over_thresh+=1
 
             loss += loss_instance

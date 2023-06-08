@@ -60,6 +60,8 @@ parser.add_argument('--pseudo-prob-threshold', default=0.8, type=float, help='ps
 parser.add_argument('--layerwise-shuffle', default=False, help='Shuffle')
 parser.add_argument('--n-head', default=2, type=int, help='Number of head')
 parser.add_argument('--sr-ratio', default=8, type=int, help='self-attention grouping ratio')
+parser.add_argument('--sr-ratio', default=8, type=int, help='self-attention grouping ratio')
+parser.add_argument('--if-balance-param', default=False, help='balance_param')
 
 parser.add_argument('--pushtoken', default=False, help='Push Bullet token')
 
@@ -190,6 +192,15 @@ def validate(val_loader, model, args):
 
 if __name__ == '__main__':
     args = parser.parse_args()
+    if args.if_balance_param:
+        if args.dataset == 'CAMELYON16':
+            args.balance_param = math.log(111./159.)
+        elif args.dataset == 'tcga_lung':
+            args.balance_param = math.log(371./380.)    
+        elif args.dataset == 'tcga_stad':
+            args.balance_param = math.log(39./252.)
+    else:
+        args.balance_param = 0.0
     args.pretrain_type = args.data_root.split("/")[-2:]
     # txt_name = f'{args.dataset}_{args.pretrain_type}_downstreamLR_{args.lr}_optimizer_{args.optimizer}_epoch{args.epochs}_wd{args.weight_decay}'    
     txt_name = f'{datetime.today().strftime("%m%d")}_{args.dataset}_{args.mil_model}_epoch{args.epochs}_share_proj{args.share_proj}_' +\

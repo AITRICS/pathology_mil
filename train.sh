@@ -44,11 +44,17 @@ dataset=CAMELYON16
 milmodel=MilTransformer
 share_proj=True
 data_root=/mnt/aitrics_ext/ext01/shared/camelyon16_eosin_224_16_pkl_0524/swav_res50
-if_learn_instance=True
-share_proj=False
-for pseudo_prob_threshold in 0.6 0.8; do
+if_learn_instance=False
+share_proj=True
+n_head=8
+sr_ratio=16
+pseudo_prob_threshold=0.5
+if_balance_param=False
+for layerwise_shuffle in True False; do
     for lr_downstream in 0.0003 0.0001 0.00003 0.00001; do 
-        CUDA_VISIBLE_DEVICES=$gpu nohup python train.py --data-root $data_root --mil-model $milmodel --dataset $dataset --epochs 100 --share-proj $share_proj --pseudo-prob-threshold $pseudo_prob_threshold --lr $lr_downstream --if-learn-instance $if_learn_instance --pushtoken o.OsyxHt1pZuwUBoMEFYBuzHFNjV5ekr95 > LR_${lr_downstream}_milmodel_${milmodel}_gpu_${gpu}.txt &
+        CUDA_VISIBLE_DEVICES=$gpu nohup python train.py --data-root $data_root --mil-model $milmodel --dataset $dataset --epochs 100 --share-proj $share_proj \
+        --layerwise-shuffle $layerwise_shuffle --n-head $n_head --sr-ratio $sr_ratio --if-balance-param $if_balance_param \
+        --pseudo-prob-threshold $pseudo_prob_threshold --lr $lr_downstream --if-learn-instance $if_learn_instance --pushtoken o.OsyxHt1pZuwUBoMEFYBuzHFNjV5ekr95 > LR_${lr_downstream}_milmodel_${milmodel}_gpu_${gpu}.txt &
         (( gpu+=1 ))        
     done
 done
