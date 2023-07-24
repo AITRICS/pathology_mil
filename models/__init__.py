@@ -4,3 +4,4 @@ from .dsmil import Dsmil
 from .rnnmil import milrnn
 from .monai_model import MonaiMil
 from .dtfd import Dtfd
+from .dtfd_tune import Dtfd_tune

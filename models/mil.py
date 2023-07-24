@@ -7,6 +7,30 @@ import torch.optim as optim
 from utils import CosineAnnealingWarmUpSingle, CosineAnnealingWarmUpRestarts
 
 
+class Classifier_instance(nn.Module):
+    def __init__(self, n_channels, num_head, aux_head=0):
+        super(Classifier_instance, self).__init__()
+        if aux_head == 2:
+            self.fc = nn.Sequential(
+                                        nn.Linear(n_channels, n_channels),
+                                        nn.ReLU(),
+                                        nn.Dropout(0.5),
+                                        nn.Linear(n_channels, num_head)
+                                    )
+        elif aux_head == 1:    
+            self.fc = nn.Linear(n_channels, num_head)
+        elif aux_head == 0:
+            self.fc = nn.Identity()
+        
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.xavier_normal_(m.weight.data)
+                m.bias.data.zero_()
+    
+    def forward(self, x):
+        return self.fc(x)
+
+
 class MilBase(nn.Module):
     def __init__(self, args, optimizer=None, criterion=None, scheduler=None, dim_in:int=2048, dim_latent: int=512, dim_out=1):
         super().__init__()
@@ -170,7 +194,7 @@ class MilTransformer(MilBase):
         #          n_head = num_heads,
         #          d_model = self.dim_latent, 
         #          d_ff = self.dim_latent * 4, 
-        #          use_pe = False)    
+        #          use_pe = False)
         self.pool = TransformerEncoder(d_input = self.dim_latent, 
                  n_layers = 2, 
                  n_head = 2,
