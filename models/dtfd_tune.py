@@ -120,7 +120,7 @@ def get_cam_1d(classifier, features):
     
 class Dtfd_tune(nn.Module):
     def __init__(self, args, optimizer=None, criterion=None, scheduler=None,encoder=None, dim_in:int=2048, dim_latent=512, dim_out=1,
-                 aux_loss = None, aux_head = 0, weight_cov = 1.0):
+                 aux_loss = None, aux_head = 0, weight_cov = 1.0, auxloss_weight = 1):
         super().__init__()
         self.dim_in = dim_in
         self.dim_out = dim_out
@@ -139,6 +139,7 @@ class Dtfd_tune(nn.Module):
         self.instance_classifier = Classifier_instance(dim_latent, num_head=128, aux_head=aux_head)
         self.aux_loss = aux_loss
         self.aux_head = aux_head
+        self.auxloss_weight = auxloss_weight
         
         if aux_loss != 'None':
             self.criterion_aux = getattr(self, aux_loss)
@@ -246,7 +247,6 @@ class Dtfd_tune(nn.Module):
         return x.flatten()[:-1].view(n - 1, n + 1)[:, 1:].flatten()
            
     def forward(self, x: torch.Tensor):
-
         feat_pseudo_bag, logit_pseudo_bag, feat_instances = self.first_tier(x) ### numGroup x fs      ,      numGroup x cls
 
         logit_bag = self.UClassifier(feat_pseudo_bag)
@@ -280,12 +280,19 @@ class Dtfd_tune(nn.Module):
         self.optimizer1.zero_grad()
         with torch.cuda.amp.autocast():
             loss0, loss1, loss2 = self.calculate_objective(X, Y)
-        loss0.backward(retain_graph=True)
+            
         if self.aux_loss != 'None':
-            loss1.backward(retain_graph=True)
-            loss2.backward()
+            loss = loss0 + loss1 + (self.auxloss_weight * loss2)
         else:
-            loss1.backward()
+            loss = loss0 + loss1
+        loss.backward()
+        
+        # loss0.backward(retain_graph=True)
+        # if self.aux_loss != 'None':
+        #     loss1.backward(retain_graph=True)
+        #     loss2.backward()
+        # else:
+        #     loss1.backward()
 
         torch.nn.utils.clip_grad_norm_(self.dimReduction.parameters(), self.grad_clipping)
         torch.nn.utils.clip_grad_norm_(self.attention.parameters(), self.grad_clipping)
