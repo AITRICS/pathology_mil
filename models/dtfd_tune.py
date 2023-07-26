@@ -5,6 +5,7 @@ import random
 import numpy as np
 import torch.nn.functional as F
 from .mil import Classifier_instance
+from einops import rearrange
 
 
 
@@ -240,7 +241,44 @@ class Dtfd_tune(nn.Module):
         cov = (p.T @ p) / (ls - 1.0)
         loss_covariance = self.off_diagonal(cov).pow_(2).sum().div(fs)
         return loss_variance + (self.weight_cov * loss_covariance)
+    
+    
+    
+    ### Here
+    def loss_divdis(self, p: torch.Tensor, target=0):
+        """
+        p.shape torch.Size([16380, 128???? 왜 2가 아니지])  암튼 num_patch, H
+        target tensor(1. or 0.)
+        """    
+        if target == 0:
+            return self.criterion(p, torch.zeros_like(p, device=p.get_device()))
+        elif target ==1:
+            p = p.sigmoid().unsqueeze(-1) # num_patch, H(2), Class(2)
+            p = torch.cat([p, 1 - p], dim=-1) # num_patch, H(2), Class(2)
+            marginal_p = p.mean(dim=0)  # H, D 
+            marginal_p = torch.einsum("hd,ge->hgde", marginal_p, marginal_p)  # H, H, D, D
+            marginal_p = rearrange(marginal_p, "h g d e -> (h g) (d e)")  # H^2, D^2
 
+            joint_p = torch.einsum("bhd,bge->bhgde", p, p).mean(dim=0)  # H, H, D, D
+            joint_p = rearrange(joint_p, "h g d e -> (h g) (d e)")  # H^2, D^2
+
+            # Compute pairwise mutual information = KL(P_XY | P_X x P_Y)
+            # Equivalent to: F.kl_div(marginal_p.log(), joint_p, reduction="none")
+            kl_computed = joint_p * (joint_p.log() - marginal_p.log()) 
+            kl_computed = kl_computed.sum(dim=-1)
+            kl_grid = rearrange(kl_computed, "(h g) -> h g", h=p.shape[1])
+            repulsion_grid = -kl_grid
+            repulsion_grid = torch.triu(repulsion_grid, diagonal=1)
+            repulsions = repulsion_grid[repulsion_grid.nonzero(as_tuple=True)] # non_zero인게 없음
+            if torch.sum(repulsions) ==0:
+                repulsion_loss = 1e-7
+            else : 
+                repulsion_loss = -repulsions.mean()
+
+            return repulsion_loss
+        
+        
+    ####
     def off_diagonal(self, x):
         n, m = x.shape
         assert n == m

@@ -48,7 +48,7 @@ parser.add_argument('--seed', default=1, type=int, help='seed for initializing t
 parser.add_argument('--auxloss-weight', default=1.0, type=float, choices=[1.0, 0.1])
 
 parser.add_argument('--dataset', default='CAMELYON16', choices=['CAMELYON16', 'tcga_lung', 'tcga_stad'], type=str, help='dataset type')
-parser.add_argument('--aux-loss', default='loss_dbat', choices=['None', 'loss_dbat', 'loss_jsd', 'loss_vc'], type=str, help='auxiliary loss type')
+parser.add_argument('--aux-loss', default='loss_divdis', choices=['None', 'loss_dbat', 'loss_jsd', 'loss_vc','loss_divdis'], type=str, help='auxiliary loss type')
 parser.add_argument('--aux-head', default=2, choices=[0,1,2], type=int, help='# of projection head for instance tokens')
 parser.add_argument('--weight-cov', default=1.0, type=float, help='weight for the covariance loss')
 # parser.add_argument('--pretrain-type', default='ImageNet_Res50_im', help='weight folder')
