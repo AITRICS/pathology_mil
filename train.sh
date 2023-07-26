@@ -2,46 +2,45 @@
 gpu=0
 dataset=CAMELYON16
 milmodel=Dtfd_tune
-# aux_loss=loss_dbat
+aux_loss=loss_dbat
 # aux_loss=loss_jsd
-aux_loss=loss_vc
-aux_head=0
-# weight_cov=1
+# aux_loss=loss_vc
+aux_head=2
+weight_cov=1
 data_root=/mnt/aitrics_ext/ext01/shared/camelyon16_eosin_224_16_pkl_0524/swav_res50
-# weight_cov = 0.1, 1, 10.0
-# lr_downstream = 0.03 0.003
-# aux_head = 0, 1, 2
-# auxloss_weight = 0.1, 1
-weight_cov=0.1
-lr_downstream=0.03
-for aux_head in 0 1 2; do
-    for auxloss_weight in 1 0.1; do
-        # lr mix 길이는 8이어야 함 (gpu 갯수와 매칭 되어야 함)
-        # CUDA_VISIBLE_DEVICES=$gpu nohup python train_mil.py --dataset $dataset --pretrain-type $lr_pretrained --epochs 100 --optimizer $optimizer --lr $lr_downstream --weight-decay 1e-4 --scheduler $scheduler > ${lr_pretrained}_LR_${lr_downstream}_sch_${scheduler}_sgd.txt &        
-        # CUDA_VISIBLE_DEVICES=$gpu nohup python train_mil.py --dataset $dataset --pretrain-type ${lr_pretrained} --epochs 100 --optimizer $optimizer --lr $lr_downstream --weight-decay 1e-4 --scheduler $scheduler > ${lr_pretrained}_LR_${lr_downstream}_sch_${scheduler}_opt_${optimizer}.txt &
-        # optimizer=sgd
-        # CUDA_VISIBLE_DEVICES=$gpu nohup python train_mil_sam.py --dataset $dataset --pretrain-type $lr_pretrained --epochs 100 --optimizer $optimizer --lr $lr_downstream --weight-decay 1e-4 --scheduler $scheduler --pushtoken o.OsyxHt1pZuwUBoMEFYBuzHFNjV5ekr95 > ${lr_pretrained}_LR_${lr_downstream}_sch_${scheduler}_opt_${optimizer}_sam.txt &
-        # optimizer=adamw
-        CUDA_VISIBLE_DEVICES=$gpu nohup python train.py --data-root $data_root --mil-model $milmodel --dataset $dataset --epochs 200 --workers 4 --aux-loss $aux_loss --aux-head $aux_head --weight-cov $weight_cov --lr $lr_downstream --pushtoken o.OsyxHt1pZuwUBoMEFYBuzHFNjV5ekr95 --auxloss-weight $auxloss_weight > ./nohups/WC_${weight_cov}_LR_${lr_downstream}_AH_${aux_head}_AW_${auxloss_weight}_milmodel_${milmodel}_gpu_${gpu}.txt &
-        # CUDA_VISIBLE_DEVICES=$gpu nohup python train_mil_sam.py --dataset $dataset --pretrain-type ${lr_pretrained} --epochs 100 --optimizer $optimizer --lr $lr_downstream --weight-decay 1e-4 --scheduler $scheduler > ${lr_pretrained}_LR_${lr_downstream}_sch_${scheduler}_opt_${optimizer}.txt &
-        (( gpu+=1 ))
-    done
-done
+# for weight_cov in 0.1 1 10.0; do
+for lr_downstream in 0.003 0.0003 0.00003; do
+    # lr mix 길이는 8이어야 함 (gpu 갯수와 매칭 되어야 함)
+    # CUDA_VISIBLE_DEVICES=$gpu nohup python train_mil.py --dataset $dataset --pretrain-type $lr_pretrained --epochs 100 --optimizer $optimizer --lr $lr_downstream --weight-decay 1e-4 --scheduler $scheduler > ${lr_pretrained}_LR_${lr_downstream}_sch_${scheduler}_sgd.txt &        
+    # CUDA_VISIBLE_DEVICES=$gpu nohup python train_mil.py --dataset $dataset --pretrain-type ${lr_pretrained} --epochs 100 --optimizer $optimizer --lr $lr_downstream --weight-decay 1e-4 --scheduler $scheduler > ${lr_pretrained}_LR_${lr_downstream}_sch_${scheduler}_opt_${optimizer}.txt &
+    # optimizer=sgd
+    # CUDA_VISIBLE_DEVICES=$gpu nohup python train_mil_sam.py --dataset $dataset --pretrain-type $lr_pretrained --epochs 100 --optimizer $optimizer --lr $lr_downstream --weight-decay 1e-4 --scheduler $scheduler --pushtoken o.OsyxHt1pZuwUBoMEFYBuzHFNjV5ekr95 > ${lr_pretrained}_LR_${lr_downstream}_sch_${scheduler}_opt_${optimizer}_sam.txt &
+    # optimizer=adamw
+    CUDA_VISIBLE_DEVICES=$gpu nohup python train.py --data-root $data_root --mil-model $milmodel --dataset $dataset --epochs 200 --workers 4 --aux-loss $aux_loss --aux-head $aux_head --weight-cov $weight_cov --lr $lr_downstream --pushtoken o.OsyxHt1pZuwUBoMEFYBuzHFNjV5ekr95 > LR_${lr_downstream}_milmodel_${milmodel}_gpu_${gpu}.txt &
+    # CUDA_VISIBLE_DEVICES=$gpu nohup python train_mil_sam.py --dataset $dataset --pretrain-type ${lr_pretrained} --epochs 100 --optimizer $optimizer --lr $lr_downstream --weight-decay 1e-4 --scheduler $scheduler > ${lr_pretrained}_LR_${lr_downstream}_sch_${scheduler}_opt_${optimizer}.txt &
 
-lr_downstream=0.003
-for aux_head in 0; do
-    for auxloss_weight in 1 0.1; do
-        # lr mix 길이는 8이어야 함 (gpu 갯수와 매칭 되어야 함)
-        # CUDA_VISIBLE_DEVICES=$gpu nohup python train_mil.py --dataset $dataset --pretrain-type $lr_pretrained --epochs 100 --optimizer $optimizer --lr $lr_downstream --weight-decay 1e-4 --scheduler $scheduler > ${lr_pretrained}_LR_${lr_downstream}_sch_${scheduler}_sgd.txt &        
-        # CUDA_VISIBLE_DEVICES=$gpu nohup python train_mil.py --dataset $dataset --pretrain-type ${lr_pretrained} --epochs 100 --optimizer $optimizer --lr $lr_downstream --weight-decay 1e-4 --scheduler $scheduler > ${lr_pretrained}_LR_${lr_downstream}_sch_${scheduler}_opt_${optimizer}.txt &
-        # optimizer=sgd
-        # CUDA_VISIBLE_DEVICES=$gpu nohup python train_mil_sam.py --dataset $dataset --pretrain-type $lr_pretrained --epochs 100 --optimizer $optimizer --lr $lr_downstream --weight-decay 1e-4 --scheduler $scheduler --pushtoken o.OsyxHt1pZuwUBoMEFYBuzHFNjV5ekr95 > ${lr_pretrained}_LR_${lr_downstream}_sch_${scheduler}_opt_${optimizer}_sam.txt &
-        # optimizer=adamw
-        CUDA_VISIBLE_DEVICES=$gpu nohup python train.py --data-root $data_root --mil-model $milmodel --dataset $dataset --epochs 200 --workers 4 --aux-loss $aux_loss --aux-head $aux_head --weight-cov $weight_cov --lr $lr_downstream --pushtoken o.OsyxHt1pZuwUBoMEFYBuzHFNjV5ekr95 --auxloss-weight $auxloss_weight > ./nohups/WC_${weight_cov}_LR_${lr_downstream}_AH_${aux_head}_AW_${auxloss_weight}_milmodel_${milmodel}_gpu_${gpu}.txt &
-        # CUDA_VISIBLE_DEVICES=$gpu nohup python train_mil_sam.py --dataset $dataset --pretrain-type ${lr_pretrained} --epochs 100 --optimizer $optimizer --lr $lr_downstream --weight-decay 1e-4 --scheduler $scheduler > ${lr_pretrained}_LR_${lr_downstream}_sch_${scheduler}_opt_${optimizer}.txt &
-        (( gpu+=1 ))
-    done
+    (( gpu+=1 ))
 done
+# done
+
+
+
+
+# aux_loss=loss_jsd
+# for aux_head in 1 2; do
+#     for lr_downstream in 0.001 0.0003 0.0001; do
+#         # lr mix 길이는 8이어야 함 (gpu 갯수와 매칭 되어야 함)
+#         # CUDA_VISIBLE_DEVICES=$gpu nohup python train_mil.py --dataset $dataset --pretrain-type $lr_pretrained --epochs 100 --optimizer $optimizer --lr $lr_downstream --weight-decay 1e-4 --scheduler $scheduler > ${lr_pretrained}_LR_${lr_downstream}_sch_${scheduler}_sgd.txt &        
+#         # CUDA_VISIBLE_DEVICES=$gpu nohup python train_mil.py --dataset $dataset --pretrain-type ${lr_pretrained} --epochs 100 --optimizer $optimizer --lr $lr_downstream --weight-decay 1e-4 --scheduler $scheduler > ${lr_pretrained}_LR_${lr_downstream}_sch_${scheduler}_opt_${optimizer}.txt &
+#         # optimizer=sgd
+#         # CUDA_VISIBLE_DEVICES=$gpu nohup python train_mil_sam.py --dataset $dataset --pretrain-type $lr_pretrained --epochs 100 --optimizer $optimizer --lr $lr_downstream --weight-decay 1e-4 --scheduler $scheduler --pushtoken o.OsyxHt1pZuwUBoMEFYBuzHFNjV5ekr95 > ${lr_pretrained}_LR_${lr_downstream}_sch_${scheduler}_opt_${optimizer}_sam.txt &
+#         # optimizer=adamw
+#         CUDA_VISIBLE_DEVICES=$gpu nohup python train.py --data-root $data_root --mil-model $milmodel --dataset $dataset --epochs 200 --workers 4 --aux-loss $aux_loss --aux-head $aux_head --weight-cov $weight_cov --lr $lr_downstream --pushtoken o.OsyxHt1pZuwUBoMEFYBuzHFNjV5ekr95 > LR_${lr_downstream}_milmodel_${milmodel}_gpu_${gpu}.txt &
+#         # CUDA_VISIBLE_DEVICES=$gpu nohup python train_mil_sam.py --dataset $dataset --pretrain-type ${lr_pretrained} --epochs 100 --optimizer $optimizer --lr $lr_downstream --weight-decay 1e-4 --scheduler $scheduler > ${lr_pretrained}_LR_${lr_downstream}_sch_${scheduler}_opt_${optimizer}.txt &
+
+#         (( gpu+=1 ))
+#     done
+# done
 
 
 # gpu=0

@@ -120,8 +120,10 @@ def get_cam_1d(classifier, features):
     
 class Dtfd_tune(nn.Module):
     def __init__(self, args, optimizer=None, criterion=None, scheduler=None,encoder=None, dim_in:int=2048, dim_latent=512, dim_out=1,
-                 aux_loss = None, aux_head = 0, weight_cov = 1.0, auxloss_weight = 1):
+                 aux_loss = None, aux_head = 0, weight_diversifying = 1.0):
         super().__init__()
+        fs=128
+
         self.dim_in = dim_in
         self.dim_out = dim_out
         self.dim_latent = dim_latent
@@ -136,17 +138,21 @@ class Dtfd_tune(nn.Module):
         self.grad_clipping = 5
         self.device = args.device
         self.sigmoid = nn.Sigmoid()
-        self.instance_classifier = Classifier_instance(dim_latent, num_head=128, aux_head=aux_head)
+        self.instance_classifier = Classifier_instance(dim_latent, num_head=fs, aux_head=aux_head)
         self.aux_loss = aux_loss
         self.aux_head = aux_head
-        self.auxloss_weight = auxloss_weight
         
         if aux_loss != 'None':
             self.criterion_aux = getattr(self, aux_loss)
         else:
             assert aux_head == 0
+        
+        if aux_loss == 'loss_center':
+            self.representative_vector = nn.Parameter(torch.ones((1, fs)).cuda())
+        elif aux_loss == 'loss_cosine':
+            self.representative_vector = nn.Parameter(torch.ones((fs)).cuda())
 
-        self.weight_cov = weight_cov
+        self.weight_diversifying = weight_diversifying
         
         # update
         self.optimizer0 = torch.optim.Adam(list(self.classifier.parameters())+list(self.attention.parameters())+list(self.dimReduction.parameters()), lr=args.lr,  weight_decay=1e-4)
@@ -228,6 +234,49 @@ class Dtfd_tune(nn.Module):
             p = torch.sigmoid(p)
             return 0.5*(F.kl_div(p[:,0], p[:,1], reduction='batchmean', log_target=False) + F.kl_div(p[:,1], p[:,0], reduction='batchmean', log_target=False))
     
+    def loss_center(self, p: torch.Tensor, target=0):
+        """
+        1) center(negative)/variance(positive) + 2) Covariance
+ 
+        p: Length_sequence x fs
+        """
+
+        ls, fs = p.shape
+        p = p - p.mean(dim=0)
+        # loss_variance = torch.mean(F.relu(1.0 - torch.sqrt(p.var(dim=0) + 0.00001)))
+        cov = (p.T @ p) / (ls - 1.0)
+        loss = self.off_diagonal(cov).pow_(2).sum().div(fs) # covariance loss
+
+        if target == 0:            
+            _representative_vector = self.representative_vector.expand(p.size(0), -1) # _representative_vector : Length_sequence x fs
+            loss += self.weight_diversifying * torch.mean(torch.pow(p - _representative_vector, 2).sum(dim=1, keepdim=False)) # center loss
+        elif target == 1:            
+            loss += self.weight_diversifying * torch.mean(F.relu(1.0 - torch.sqrt(p.var(dim=0) + 0.00001))) # variance
+
+        return loss
+    
+    def loss_cosine(self, p: torch.Tensor, target=0):
+        """
+        1) cosine(negative)/variance(positive) + 2) Covariance
+ 
+        p: Length_sequence x fs
+        """
+
+        ls, fs = p.shape
+        p = p - p.mean(dim=0)
+        # loss_variance = torch.mean(F.relu(1.0 - torch.sqrt(p.var(dim=0) + 0.00001)))
+        cov = (p.T @ p) / (ls - 1.0)
+        loss = self.off_diagonal(cov).pow_(2).sum().div(fs) # covariance loss
+
+        if target == 0:
+            _representative_vector = F.normalize(self.representative_vector, dim=0) # _representative_vector : Length_sequence x fs
+            p = F.normalize(p, dim=1)
+            loss += self.weight_diversifying * torch.mean(p @ _representative_vector) # center loss
+        elif target == 1:            
+            loss += self.weight_diversifying * torch.mean(F.relu(1.0 - torch.sqrt(p.var(dim=0) + 0.00001))) # variance
+
+        return loss    
+
     def loss_vc(self, p: torch.Tensor, target=None):
         """
         Variance + Covariance
@@ -239,7 +288,7 @@ class Dtfd_tune(nn.Module):
         loss_variance = torch.mean(F.relu(1.0 - torch.sqrt(p.var(dim=0) + 0.00001)))
         cov = (p.T @ p) / (ls - 1.0)
         loss_covariance = self.off_diagonal(cov).pow_(2).sum().div(fs)
-        return loss_variance + (self.weight_cov * loss_covariance)
+        return (self.weight_diversifying * loss_variance) + loss_covariance
 
     def off_diagonal(self, x):
         n, m = x.shape
@@ -247,6 +296,7 @@ class Dtfd_tune(nn.Module):
         return x.flatten()[:-1].view(n - 1, n + 1)[:, 1:].flatten()
            
     def forward(self, x: torch.Tensor):
+
         feat_pseudo_bag, logit_pseudo_bag, feat_instances = self.first_tier(x) ### numGroup x fs      ,      numGroup x cls
 
         logit_bag = self.UClassifier(feat_pseudo_bag)
@@ -280,19 +330,13 @@ class Dtfd_tune(nn.Module):
         self.optimizer1.zero_grad()
         with torch.cuda.amp.autocast():
             loss0, loss1, loss2 = self.calculate_objective(X, Y)
-            
+        # print(f'{loss0.item()}, {loss1.item()}, {loss2.item()}')
+        loss0.backward(retain_graph=True)
         if self.aux_loss != 'None':
-            loss = loss0 + loss1 + (self.auxloss_weight * loss2)
+            loss1.backward(retain_graph=True)
+            loss2.backward()
         else:
-            loss = loss0 + loss1
-        loss.backward()
-        
-        # loss0.backward(retain_graph=True)
-        # if self.aux_loss != 'None':
-        #     loss1.backward(retain_graph=True)
-        #     loss2.backward()
-        # else:
-        #     loss1.backward()
+            loss1.backward()
 
         torch.nn.utils.clip_grad_norm_(self.dimReduction.parameters(), self.grad_clipping)
         torch.nn.utils.clip_grad_norm_(self.attention.parameters(), self.grad_clipping)
@@ -321,7 +365,7 @@ class Dtfd_tune(nn.Module):
         prob_instance: #bags x #instances x #class
         """
         logit_bag, _, _ = self.forward(x)
-
+        # print(f'logit_bag: {logit_bag}')
         prob_bag = self.sigmoid(logit_bag)
 
         return prob_bag, None

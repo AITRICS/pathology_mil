@@ -45,17 +45,15 @@ parser.add_argument('--batch-size', default=1, type=int, metavar='N', help='the 
 parser.add_argument('--momentum', default=0.9, type=float, help='sgd momentum')
 parser.add_argument('--seed', default=1, type=int, help='seed for initializing training. ')
 
-parser.add_argument('--auxloss-weight', default=1.0, type=float, choices=[1.0, 0.1])
-
 parser.add_argument('--dataset', default='CAMELYON16', choices=['CAMELYON16', 'tcga_lung', 'tcga_stad'], type=str, help='dataset type')
-parser.add_argument('--aux-loss', default='loss_dbat', choices=['None', 'loss_dbat', 'loss_jsd', 'loss_vc'], type=str, help='auxiliary loss type')
-parser.add_argument('--aux-head', default=2, choices=[0,1,2], type=int, help='# of projection head for instance tokens')
-parser.add_argument('--weight-cov', default=1.0, type=float, help='weight for the covariance loss')
+parser.add_argument('--aux-loss', default='loss_cosine', choices=['None', 'loss_dbat', 'loss_jsd', 'loss_vc', 'loss_center', 'loss_cosine'], type=str, help='auxiliary loss type')
+parser.add_argument('--aux-head', default=1, choices=[0,1,2], type=int, help='# of projection head for instance tokens')
+parser.add_argument('--weight-diversifying', default=1.0, type=float, help='weight for the diversifying loss, eg, variance, center, cosine')
 # parser.add_argument('--pretrain-type', default='ImageNet_Res50_im', help='weight folder')
 # parser.add_argument('--pretrain-type', default='simclr_lr1', help='weight folder')
 parser.add_argument('--epochs', default=100, type=int, metavar='N', help='number of total epochs to run')
 # parser.add_argument('--optimizer', default='sgd', choices=['sgd', 'adam', 'adamw'], type=str, help='optimizer')
-parser.add_argument('--lr', default=0.0001, type=float, metavar='LR', help='initial learning rate', dest='lr')
+parser.add_argument('--lr', default=0.001, type=float, metavar='LR', help='initial learning rate', dest='lr')
 # DTFD: 1e-4, TransMIL: 1e-5
 parser.add_argument('--weight-decay', default=1e-5, type=float, metavar='W', help='weight decay (default: 1e-5)', dest='weight_decay')
 parser.add_argument('--mil-model', default='Dtfd_tune', choices=['MilTransformer', 'monai.max','monai.att','monai.att_trans','milmax', 'milmean', 'Attention', 'GatedAttention','Dsmil','milrnn','Dtfd', 'Dtfd_tune'], type=str, help='use pre-training method')
@@ -95,7 +93,7 @@ def run_fold(args, fold, txt_name) -> Tuple:
     elif args.mil_model == 'MilTransformer':
         model = milmodels.__dict__[args.mil_model](args=args, if_learn_instance=args.if_learn_instance, pseudo_prob_threshold=args.pseudo_prob_threshold, share_proj=args.share_proj, optimizer=None, criterion=None, scheduler=None, dim_in=dim_in, dim_latent=512, dim_out=args.num_classes).cuda()
     else:
-        model = milmodels.__dict__[args.mil_model](args=args, optimizer=None, criterion=None, scheduler=None, dim_in=dim_in, dim_latent=512, dim_out=args.num_classes, aux_loss=args.aux_loss, aux_head=args.aux_head, weight_cov=args.weight_cov, auxloss_weight=args.auxloss_weight).cuda()
+        model = milmodels.__dict__[args.mil_model](args=args, optimizer=None, criterion=None, scheduler=None, dim_in=dim_in, dim_latent=512, dim_out=args.num_classes, aux_loss=args.aux_loss, aux_head=args.aux_head, weight_diversifying=args.weight_diversifying).cuda()
     
     # if args.loss == 'bce':
     #     criterion = nn.BCEWithLogitsLoss().cuda()
@@ -117,7 +115,7 @@ def run_fold(args, fold, txt_name) -> Tuple:
 
     auc_best = 0.0
     epoch_best = 0
-    file_name = "saved_models/"+f'{txt_name}_lr{args.lr}_fold{fold}.pth'
+    file_name = f'{txt_name}_lr{args.lr}_fold{fold}.pth'
     for epoch in trange(1, (args.epochs+1)):        
         train(loader_train, model)
         auc, acc = validate(loader_val, model, args)
@@ -209,7 +207,7 @@ if __name__ == '__main__':
     # txt_name = f'{args.dataset}_{args.pretrain_type}_downstreamLR_{args.lr}_optimizer_{args.optimizer}_epoch{args.epochs}_wd{args.weight_decay}'    
     txt_name = f'{datetime.today().strftime("%m%d")}_{args.dataset}_{args.mil_model}_epoch{args.epochs}_share_proj{args.share_proj}_' +\
     f'if_learn_instance{args.if_learn_instance}_pseudo_prob_threshold{args.pseudo_prob_threshold}_n_head{args.n_head}_sr_ratio{args.sr_ratio}_' +\
-    f'aux_loss{args.aux_loss}_aux_head{args.aux_head}_weight_cov{args.weight_cov}_layerwise_shuffle{args.layerwise_shuffle}_auxloss_weight{args.auxloss_weight}'
+    f'aux_loss{args.aux_loss}_aux_head{args.aux_head}weight_diversifying{args.weight_diversifying}_layerwise_shuffle{args.layerwise_shuffle}'
 
     acc_fold_tr = []
     auc_fold_tr = []
