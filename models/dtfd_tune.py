@@ -247,14 +247,14 @@ class Dtfd_tune(nn.Module):
     ### Here
     def loss_divdis(self, p: torch.Tensor, target=0):
         """
-        p.shape torch.Size([16380, 128???? 왜 2가 아니지])  암튼 num_patch, H
-        target tensor(1. or 0.)
+        Length_sequence x Head_num
+        notation : H - head , D - num_class, B - sequence length(본 논문의 batch size)
         """    
         if target == 0:
             return self.criterion(p, torch.zeros_like(p, device=p.get_device()))
         elif target ==1:
-            p = p.sigmoid().unsqueeze(-1) # num_patch, H(2), Class(2)
-            p = torch.cat([p, 1 - p], dim=-1) # num_patch, H(2), Class(2)
+            p = p.sigmoid().unsqueeze(-1) 
+            p = torch.cat([p, 1 - p], dim=-1) # B, H, D
             marginal_p = p.mean(dim=0)  # H, D 
             marginal_p = torch.einsum("hd,ge->hgde", marginal_p, marginal_p)  # H, H, D, D
             marginal_p = rearrange(marginal_p, "h g d e -> (h g) (d e)")  # H^2, D^2
@@ -269,7 +269,7 @@ class Dtfd_tune(nn.Module):
             kl_grid = rearrange(kl_computed, "(h g) -> h g", h=p.shape[1])
             repulsion_grid = -kl_grid
             repulsion_grid = torch.triu(repulsion_grid, diagonal=1)
-            repulsions = repulsion_grid[repulsion_grid.nonzero(as_tuple=True)] # non_zero인게 없음
+            repulsions = repulsion_grid[repulsion_grid.nonzero(as_tuple=True)] # 처음에 non_zero인게 없음
             if torch.sum(repulsions) ==0:
                 repulsion_loss = 1e-7
             else : 
