@@ -46,9 +46,15 @@ parser.add_argument('--momentum', default=0.9, type=float, help='sgd momentum')
 parser.add_argument('--seed', default=1, type=int, help='seed for initializing training. ')
 
 parser.add_argument('--dataset', default='CAMELYON16', choices=['CAMELYON16', 'tcga_lung', 'tcga_stad'], type=str, help='dataset type')
-parser.add_argument('--aux-loss', default='loss_cosine', choices=['None', 'loss_dbat', 'loss_jsd', 'loss_vc', 'loss_center', 'loss_cosine'], type=str, help='auxiliary loss type')
-parser.add_argument('--aux-head', default=1, choices=[0,1,2], type=int, help='# of projection head for instance tokens')
-parser.add_argument('--weight-diversifying', default=1.0, type=float, help='weight for the diversifying loss, eg, variance, center, cosine')
+parser.add_argument('--aux-loss', default='loss_center_vc', choices=['None', 'loss_dbat', 'loss_jsd', 'loss_vc', 'loss_center', 'loss_cosine', 'loss_center_vc', 'loss_cosine_vc'], type=str, help='auxiliary loss type')
+parser.add_argument('--num-head', default=5, type=int, help='# of projection head for each instance token')
+# parser.add_argument('--dim-head', default=128, type=int, help='feature dimension for instance token heads')
+parser.add_argument('--layernum-head', default=1, choices=[0,1,2], type=int, help='layer number of projection head for instance tokens')
+parser.add_argument('--weight-agree', default=1.0, type=float, help='weight for the agree loss, eg, center, cosine')
+parser.add_argument('--weight-disagree', default=1.0, type=float, help='weight for the disagree loss, eg, variance loss, contrastive')
+parser.add_argument('--weight-cov', default=1.0, type=float, help='weight for the covariance loss')
+parser.add_argument('--stddev-disagree', default=1.0, type=float, help='std dev threshold for disagree loss')
+
 # parser.add_argument('--pretrain-type', default='ImageNet_Res50_im', help='weight folder')
 # parser.add_argument('--pretrain-type', default='simclr_lr1', help='weight folder')
 parser.add_argument('--epochs', default=100, type=int, metavar='N', help='number of total epochs to run')
@@ -61,7 +67,6 @@ parser.add_argument('--if-learn-instance', default=False, help='if_learn_instanc
 parser.add_argument('--share-proj', default=False, help='if share projection')
 parser.add_argument('--pseudo-prob-threshold', default=0.8, type=float, help='pseudo_prob_threshold')
 parser.add_argument('--layerwise-shuffle', default=False, help='Shuffle')
-parser.add_argument('--n-head', default=2, type=int, help='Number of head')
 parser.add_argument('--sr-ratio', default=8, type=int, help='self-attention grouping ratio')
 parser.add_argument('--if-balance-param', default=False, help='balance_param')
 
@@ -93,7 +98,7 @@ def run_fold(args, fold, txt_name) -> Tuple:
     elif args.mil_model == 'MilTransformer':
         model = milmodels.__dict__[args.mil_model](args=args, if_learn_instance=args.if_learn_instance, pseudo_prob_threshold=args.pseudo_prob_threshold, share_proj=args.share_proj, optimizer=None, criterion=None, scheduler=None, dim_in=dim_in, dim_latent=512, dim_out=args.num_classes).cuda()
     else:
-        model = milmodels.__dict__[args.mil_model](args=args, optimizer=None, criterion=None, scheduler=None, dim_in=dim_in, dim_latent=512, dim_out=args.num_classes, aux_loss=args.aux_loss, aux_head=args.aux_head, weight_diversifying=args.weight_diversifying).cuda()
+        model = milmodels.__dict__[args.mil_model](args=args, optimizer=None, criterion=None, scheduler=None, dim_in=dim_in, dim_latent=512, dim_out=args.num_classes, aux_loss=args.aux_loss, num_head=args.num_head, layernum_head=args.layernum_head, weight_agree=args.weight_agree, weight_disagree=args.weight_disagree, weight_cov=args.weight_cov, stddev_disagree=args.stddev_disagree).cuda()
     
     # if args.loss == 'bce':
     #     criterion = nn.BCEWithLogitsLoss().cuda()
@@ -126,7 +131,6 @@ def run_fold(args, fold, txt_name) -> Tuple:
             acc_val = acc
             torch.save({'state_dict': model.state_dict()}, file_name)
         print(f'auc val: {auc}')
-        print(f'kk')
     
 
     dataset_test = Dataset_pkl(path_pretrained_pkl_root=args.data_root, fold_now=999, fold_all=9999, shuffle_slide=False, shuffle_patch=False, split='test', num_classes=args.num_classes, seed=args.seed)
@@ -205,9 +209,9 @@ if __name__ == '__main__':
         args.balance_param = 0.0
     args.pretrain_type = args.data_root.split("/")[-2:]
     # txt_name = f'{args.dataset}_{args.pretrain_type}_downstreamLR_{args.lr}_optimizer_{args.optimizer}_epoch{args.epochs}_wd{args.weight_decay}'    
-    txt_name = f'{datetime.today().strftime("%m%d")}_{args.dataset}_{args.mil_model}_epoch{args.epochs}_share_proj{args.share_proj}_' +\
-    f'if_learn_instance{args.if_learn_instance}_pseudo_prob_threshold{args.pseudo_prob_threshold}_n_head{args.n_head}_sr_ratio{args.sr_ratio}_' +\
-    f'aux_loss{args.aux_loss}_aux_head{args.aux_head}weight_diversifying{args.weight_diversifying}_layerwise_shuffle{args.layerwise_shuffle}'
+    txt_name = f'{datetime.today().strftime("%m%d")}_{args.dataset}_{args.mil_model}_aux_loss{args.aux_loss}' +\
+    f'_num_head{args.num_head}_layernum_head{args.layernum_head}' +\
+    f'_weight_agree{args.weight_agree}_weight_disagree{args.weight_disagree}_weight_cov{args.weight_cov}_stddev_disagree{args.stddev_disagree}'
 
     acc_fold_tr = []
     auc_fold_tr = []

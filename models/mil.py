@@ -8,26 +8,44 @@ from utils import CosineAnnealingWarmUpSingle, CosineAnnealingWarmUpRestarts
 
 
 class Classifier_instance(nn.Module):
-    def __init__(self, n_channels, num_head, aux_head=0):
+    def __init__(self, n_channels, fs, layernum_head=0, num_head=1):
         super(Classifier_instance, self).__init__()
-        if aux_head == 2:
-            self.fc = nn.Sequential(
+        if layernum_head == 2:
+            self.fc = nn.ModuleList([nn.Sequential(
                                         nn.Linear(n_channels, n_channels),
                                         nn.ReLU(),
                                         nn.Dropout(0.5),
-                                        nn.Linear(n_channels, num_head)
-                                    )
-        elif aux_head == 1:    
-            self.fc = nn.Linear(n_channels, num_head)
-        elif aux_head == 0:
+                                        nn.Linear(n_channels, fs)
+                                    )] * num_head )
+
+        elif layernum_head == 1:    
+            self.fc = nn.ModuleList([nn.Linear(n_channels, fs)] * num_head)
+        elif layernum_head == 0:
             self.fc = nn.Identity()
+
         
+        if num_head == 1:
+            self.forward = self.forward_singlehead
+            if layernum_head > 0:
+                self.fc = self.fc[0]
+        else:
+            self.forward = self.forward_multihead
+
         for m in self.modules():
             if isinstance(m, nn.Linear):
                 nn.init.xavier_normal_(m.weight.data)
                 m.bias.data.zero_()
     
-    def forward(self, x):
+    def forward_multihead(self, x):
+        """
+        x: num_patch x fs
+
+        return: Length_sequence x fs x Head_num
+        """
+        return torch.stack([_fc(x) for _fc in self.fc], dim=2)
+         
+    
+    def forward_singlehead(self, x):
         return self.fc(x)
 
 
