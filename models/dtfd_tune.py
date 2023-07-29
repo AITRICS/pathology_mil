@@ -5,7 +5,7 @@ import random
 import numpy as np
 import torch.nn.functional as F
 from .mil import Classifier_instance
-
+from einops import rearrange
 
 
 class Classifier_1fc(nn.Module):
@@ -299,7 +299,9 @@ class Dtfd_tune(nn.Module):
 
         ls, fs, hn = p.shape
         p_whiten = p - p.mean(dim=0, keepdim=True).mean(dim=2, keepdim=True) # Length_sequence x fs x Head_num
-        p_whiten_merged = torch.transpose(p_whiten, 1, 2).view(ls*hn, fs) # (Length_sequence x Head_num) x fs
+        # p_whiten_merged = torch.transpose(p_whiten, 1, 2).view(ls*hn, fs) # (Length_sequence x Head_num) x fs
+        p_whiten_merged = rearrange(torch.transpose(p_whiten, 1, 2), "l h f -> (l h) f") # p_whiten_merged: (Length_sequence x Head_num) x fs
+        
         cov = (p_whiten_merged.T @ p_whiten_merged) / ((ls*hn) - 1.0)
         loss = self.weight_cov*(self.off_diagonal(cov).pow_(2).sum().div(fs)) # covariance loss
 
@@ -321,7 +323,8 @@ class Dtfd_tune(nn.Module):
 
         ls, fs, hn = p.shape
         p_whiten = p - p.mean(dim=0, keepdim=True).mean(dim=2, keepdim=True) # Length_sequence x fs x Head_num
-        p_whiten_merged = torch.transpose(p_whiten, 1, 2).view(ls*hn, fs) # (Length_sequence x Head_num) x fs
+        # p_whiten_merged = torch.transpose(p_whiten, 1, 2).view(ls*hn, fs) # (Length_sequence x Head_num) x fs
+        p_whiten_merged = rearrange(torch.transpose(p_whiten, 1, 2), "l h f -> (l h) f") # p_whiten_merged: (Length_sequence x Head_num) x fs
         cov = (p_whiten_merged.T @ p_whiten_merged) / ((ls*hn) - 1.0)
         loss = self.weight_cov*(self.off_diagonal(cov).pow_(2).sum().div(fs)) # covariance loss
 
