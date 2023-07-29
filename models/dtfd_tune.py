@@ -137,7 +137,8 @@ class Dtfd_tune(nn.Module):
         self.grad_clipping = 5
         self.device = args.device
         self.sigmoid = nn.Sigmoid()
-        self.instance_classifier = Classifier_instance(dim_latent, num_head=128, aux_head=aux_head)
+        # self.instance_classifier = Classifier_instance(dim_latent, num_head=128, aux_head=aux_head)
+        self.instance_classifier = Classifier_instance(dim_latent, num_head=2, aux_head=aux_head)
         self.aux_loss = aux_loss
         self.aux_head = aux_head
         self.auxloss_weight = auxloss_weight
@@ -321,6 +322,7 @@ class Dtfd_tune(nn.Module):
             
         if self.aux_loss != 'None':
             loss = loss0 + loss1 + (self.auxloss_weight * loss2)
+            #print(loss2)
         else:
             loss = loss0 + loss1
         loss.backward()
