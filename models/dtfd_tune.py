@@ -290,20 +290,20 @@ class Dtfd_tune(nn.Module):
         _p = p - p.mean(dim=0)
         # loss_variance = torch.mean(F.relu(1.0 - torch.sqrt(p.var(dim=0) + 0.00001)))
         cov = (_p.T @ _p) / (ls - 1.0)
-        loss = self.off_diagonal(cov).pow_(2).sum().div(fs) # covariance loss
+        loss = self.weight_cov*(self.off_diagonal(cov).pow_(2).sum().div(fs)) # covariance loss
 
-        print(f'==================================')
-        print(f'cov: {self.off_diagonal(cov).pow_(2).sum().div(fs) }')
+        # print(f'==================================')
+        # print(f'cov: {self.off_diagonal(cov).pow_(2).sum().div(fs) }')
 
         if target == 0:
             _representative_vector = p - self.representative_vector.expand(ls, -1) # _representative_vector : Length_sequence x fs
             loss += self.weight_agree * torch.mean(torch.sqrt(_representative_vector.var(dim=0) + 0.00001)) # var loss
-            print(f'var: {self.weight_agree * torch.mean(torch.sqrt(_representative_vector.var(dim=0) + 0.00001))}')
-            print(f'center location: {self.representative_vector[0,:5]}')
+            # print(f'var: {self.weight_agree * torch.mean(torch.sqrt(_representative_vector.var(dim=0) + 0.00001))}')
+            # print(f'center location: {self.representative_vector[0,:5]}')
         elif target == 1:
             loss += self.weight_disagree * torch.mean(F.relu(self.stddev_disagree - torch.sqrt(_p.var(dim=0) + 0.00001))) # variance
-            print(f'variance: {self.weight_disagree * torch.mean(F.relu(self.stddev_disagree - torch.sqrt(_p.var(dim=0) + 0.00001)))}')
-            print(f'max variance: {torch.amax(_p.var(dim=0))}')
+            # print(f'variance: {self.weight_disagree * torch.mean(F.relu(self.stddev_disagree - torch.sqrt(_p.var(dim=0) + 0.00001)))}')
+            # print(f'max variance: {torch.amax(_p.var(dim=0))}')
 
         return loss
     
