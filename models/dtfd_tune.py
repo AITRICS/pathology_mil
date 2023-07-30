@@ -378,20 +378,20 @@ class Dtfd_tune(nn.Module):
         
         cov = (p_whiten_merged.T @ p_whiten_merged) / ((ls*hn) - 1.0)
         loss = self.weight_cov*(self.off_diagonal(cov).pow_(2).sum().div(fs)) # covariance loss
-        print(f'==================================')
-        print(f'cov: {self.weight_cov*(self.off_diagonal(cov).pow_(2).sum().div(fs))}')
+        # print(f'==================================')
+        # print(f'cov: {self.weight_cov*(self.off_diagonal(cov).pow_(2).sum().div(fs))}')
         if target == 0:
             _representative_vector = self.representative_vector.expand(ls*hn, fs) # _representative_vector : (Length_sequence x Head_num) x fs 
             loss += self.weight_agree * torch.mean(torch.sqrt((p_whiten_merged - _representative_vector).var(dim=0, keepdim=False) + 0.00001))
-            print(f'var_neg: {self.weight_agree * torch.mean(torch.sqrt((p_whiten_merged - _representative_vector).var(dim=0, keepdim=False) + 0.00001))}')
-            print(f'negative center location: {self.representative_vector[0,:5]}')
+            # print(f'var_neg: {self.weight_agree * torch.mean(torch.sqrt((p_whiten_merged - _representative_vector).var(dim=0, keepdim=False) + 0.00001))}')
+            # print(f'negative center location: {self.representative_vector[0,:5]}')
             
         elif target == 1:
             loss += self.weight_disagree * torch.mean(F.relu(self.stddev_disagree - torch.sqrt(p_whiten_head.var(dim=2) + 0.00001))) # standard deviation
-            print(f'variance: {self.weight_disagree * torch.mean(F.relu(self.stddev_disagree - torch.sqrt(p_whiten_head.var(dim=2) + 0.00001)))}')
-            print(f'max variance: {torch.amax(p_whiten_head.var(dim=2))}')
+            # print(f'variance: {self.weight_disagree * torch.mean(F.relu(self.stddev_disagree - torch.sqrt(p_whiten_head.var(dim=2) + 0.00001)))}')
+            # print(f'max variance: {torch.amax(p_whiten_head.var(dim=2))}')
         
-        print(f'weight: {[f.weight[0,0].item() for f in self.instance_classifier.fc]}')
+        # print(f'weight: {[f.weight[0,0].item() for f in self.instance_classifier.fc]}')
         return loss
 
     def loss_div_contrastive(self, p: torch.Tensor, target=0):
