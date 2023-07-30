@@ -298,12 +298,12 @@ class Dtfd_tune(nn.Module):
         if target == 0:
             _representative_vector = p - self.representative_vector.expand(ls, -1) # _representative_vector : Length_sequence x fs
             loss += self.weight_agree * torch.mean(torch.sqrt(_representative_vector.var(dim=0) + 0.00001)) # var loss
-            print(f'var: {self.weight_agree * torch.mean(torch.sqrt(_representative_vector.var(dim=0) + 0.00001))}')
-            print(f'center location: {self.representative_vector[0,:5]}')
+            # print(f'var: {self.weight_agree * torch.mean(torch.sqrt(_representative_vector.var(dim=0) + 0.00001))}')
+            # print(f'center location: {self.representative_vector[0,:5]}')
         elif target == 1:
             loss += self.weight_disagree * torch.mean(F.relu(self.stddev_disagree - torch.sqrt(_p.var(dim=0) + 0.00001))) # variance
-            print(f'variance: {self.weight_disagree * torch.mean(F.relu(self.stddev_disagree - torch.sqrt(_p.var(dim=0) + 0.00001)))}')
-            print(f'max variance: {torch.amax(_p.var(dim=0))}')
+            # print(f'variance: {self.weight_disagree * torch.mean(F.relu(self.stddev_disagree - torch.sqrt(_p.var(dim=0) + 0.00001)))}')
+            # print(f'max variance: {torch.amax(_p.var(dim=0))}')
 
         return loss
     
@@ -321,20 +321,20 @@ class Dtfd_tune(nn.Module):
         cov = (_p.T @ _p) / (ls - 1.0)
         loss = self.weight_cov*(self.off_diagonal(cov).pow_(2).sum().div(fs)) # covariance loss
         
-        print(f'==================================')
-        print(f'cov: {self.off_diagonal(cov).pow_(2).sum().div(fs) }')
+        # print(f'==================================')
+        # print(f'cov: {self.off_diagonal(cov).pow_(2).sum().div(fs) }')
 
         if target == 0:
             _representative_vector = F.normalize(self.representative_vector, dim=0, eps=1e-8) # _representative_vector : fs
             p = F.normalize(p, dim=1, eps=1e-8)
             loss -= self.weight_agree * torch.mean(p @ _representative_vector) # cosine loss
             
-            print(f'cosine neg: {self.weight_agree * torch.mean(torch.pow(p - _representative_vector, 2).sum(dim=1, keepdim=False))}')
-            print(f'cosine location: {self.representative_vector[:5]}')
+            # print(f'cosine neg: {self.weight_agree * torch.mean(torch.pow(p - _representative_vector, 2).sum(dim=1, keepdim=False))}')
+            # print(f'cosine location: {self.representative_vector[:5]}')
         elif target == 1:
             loss += self.weight_disagree * torch.sum((p_n @ p_n.T).fill_diagonal_(0))/(ls*(ls-1.0))
-            print(f'cosine - pos: {self.weight_disagree * torch.sum((p_n @ p_n.T).fill_diagonal_(0))/(ls*(ls-1.0))}')
-            print(f'max variance: {torch.amax(_p.var(dim=0))}')
+            # print(f'cosine - pos: {self.weight_disagree * torch.sum((p_n @ p_n.T).fill_diagonal_(0))/(ls*(ls-1.0))}')
+            # print(f'max variance: {torch.amax(_p.var(dim=0))}')
 
         return loss
         
