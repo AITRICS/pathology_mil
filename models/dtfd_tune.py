@@ -6,7 +6,7 @@ import numpy as np
 import torch.nn.functional as F
 from .mil import Classifier_instance
 from einops import rearrange
-
+from itertools import chain
 
 class Classifier_1fc(nn.Module):
     def __init__(self, n_channels, n_classes, droprate=0.0):
@@ -151,7 +151,7 @@ class Dtfd_tune(nn.Module):
         else:
             assert layernum_head == 0
         
-        if aux_loss == 'loss_center':
+        if (aux_loss == 'loss_center') or (aux_loss == 'loss_var') or (aux_loss == 'loss_div_vc'):
             self.representative_vector = nn.Parameter(torch.ones((1, fs)).cuda())
         elif aux_loss == 'loss_cosine':
             self.representative_vector = nn.Parameter(torch.ones((fs)).cuda())
@@ -171,7 +171,7 @@ class Dtfd_tune(nn.Module):
         self.optimizer0 = torch.optim.Adam(list(self.classifier.parameters())+list(self.attention.parameters())+list(self.dimReduction.parameters()), lr=args.lr,  weight_decay=1e-4)
         self.optimizer1 = torch.optim.Adam(self.UClassifier.parameters(), lr=args.lr,  weight_decay=1e-4) ## psuedo bag
         if layernum_head != 0:
-            self.optimizer2 = torch.optim.Adam(self.instance_classifier.parameters(), lr=args.lr,  weight_decay=1e-4) ## psuedo bag
+            self.optimizer2 = torch.optim.Adam(list(self.instance_classifier.parameters())+[self.representative_vector], lr=args.lr,  weight_decay=1e-4) ## psuedo bag
 
         self.scheduler0 = torch.optim.lr_scheduler.MultiStepLR(self.optimizer0, '[100]', gamma=0.2)
         self.scheduler1 = torch.optim.lr_scheduler.MultiStepLR(self.optimizer1, '[100]', gamma=0.2)
@@ -234,7 +234,7 @@ class Dtfd_tune(nn.Module):
             p = torch.sigmoid(p)
             loss = -torch.log(p[:,0]*(1.0-p[:,1]) + (1.0-p[:,0])*p[:,1] +  1e-7).mean()
         # (- torch.log(p_1_s[i] * (1-p_2_s[i]) + p_2_s[i] * (1-p_1_s[i]) +  1e-7)).mean()
-        return loss
+        return self.weight_cov * loss
 
     def loss_jsd(self, p: torch.Tensor, target=0):
         """
@@ -245,7 +245,7 @@ class Dtfd_tune(nn.Module):
             return self.criterion(p, torch.zeros_like(p, device=p.get_device()))
         elif target == 1:
             p = torch.sigmoid(p)
-            return 0.5*(F.kl_div(p[:,0], p[:,1], reduction='batchmean', log_target=False) + F.kl_div(p[:,1], p[:,0], reduction='batchmean', log_target=False))
+            return self.weight_cov*0.5*(F.kl_div(p[:,0], p[:,1], reduction='batchmean', log_target=False) + F.kl_div(p[:,1], p[:,0], reduction='batchmean', log_target=False))
     
     def loss_center(self, p: torch.Tensor, target=0):
         """
@@ -255,16 +255,51 @@ class Dtfd_tune(nn.Module):
         """
 
         ls, fs = p.shape
-        p = p - p.mean(dim=0)
+        _p = p - p.mean(dim=0)
         # loss_variance = torch.mean(F.relu(1.0 - torch.sqrt(p.var(dim=0) + 0.00001)))
-        cov = (p.T @ p) / (ls - 1.0)
+        cov = (_p.T @ _p) / (ls - 1.0)
         loss = self.off_diagonal(cov).pow_(2).sum().div(fs) # covariance loss
+
+        print(f'==================================')
+        print(f'cov: {self.off_diagonal(cov).pow_(2).sum().div(fs) }')
 
         if target == 0:
             _representative_vector = self.representative_vector.expand(ls, -1) # _representative_vector : Length_sequence x fs
-            loss += self.weight_diversifying * torch.mean(torch.pow(p - _representative_vector, 2).sum(dim=1, keepdim=False)) # center loss
+            loss += self.weight_agree * torch.mean(torch.pow(p - _representative_vector, 2).sum(dim=1, keepdim=False)) # center loss
+            print(f'center: {self.weight_agree * torch.mean(torch.pow(p - _representative_vector, 2).sum(dim=1, keepdim=False))}')
+            print(f'center location: {self.representative_vector[0,:5]}')
         elif target == 1:            
-            loss += self.weight_diversifying * torch.mean(F.relu(self.stddev_disagree - torch.sqrt(p.var(dim=0) + 0.00001))) # variance
+            loss += self.weight_disagree * torch.mean(F.relu(self.stddev_disagree - torch.sqrt(_p.var(dim=0) + 0.00001))) # variance
+            print(f'variance: {self.weight_disagree * torch.mean(F.relu(self.stddev_disagree - torch.sqrt(_p.var(dim=0) + 0.00001)))}')
+            print(f'max variance: {torch.amax(_p.var(dim=0))}')
+
+        return loss
+
+    def loss_var(self, p: torch.Tensor, target=0):
+        """
+        1) center(negative)/variance(positive) + 2) Covariance
+ 
+        p: Length_sequence x fs
+        """
+
+        ls, fs = p.shape
+        _p = p - p.mean(dim=0)
+        # loss_variance = torch.mean(F.relu(1.0 - torch.sqrt(p.var(dim=0) + 0.00001)))
+        cov = (_p.T @ _p) / (ls - 1.0)
+        loss = self.off_diagonal(cov).pow_(2).sum().div(fs) # covariance loss
+
+        print(f'==================================')
+        print(f'cov: {self.off_diagonal(cov).pow_(2).sum().div(fs) }')
+
+        if target == 0:
+            _representative_vector = p - self.representative_vector.expand(ls, -1) # _representative_vector : Length_sequence x fs
+            loss += self.weight_agree * torch.mean(torch.sqrt(_representative_vector.var(dim=0) + 0.00001)) # var loss
+            print(f'var: {self.weight_agree * torch.mean(torch.sqrt(_representative_vector.var(dim=0) + 0.00001))}')
+            print(f'center location: {self.representative_vector[0,:5]}')
+        elif target == 1:
+            loss += self.weight_disagree * torch.mean(F.relu(self.stddev_disagree - torch.sqrt(_p.var(dim=0) + 0.00001))) # variance
+            print(f'variance: {self.weight_disagree * torch.mean(F.relu(self.stddev_disagree - torch.sqrt(_p.var(dim=0) + 0.00001)))}')
+            print(f'max variance: {torch.amax(_p.var(dim=0))}')
 
         return loss
     
@@ -276,19 +311,28 @@ class Dtfd_tune(nn.Module):
         """
 
         ls, fs = p.shape
-        p = p - p.mean(dim=0)
+        _p = p - p.mean(dim=0)
         # loss_variance = torch.mean(F.relu(1.0 - torch.sqrt(p.var(dim=0) + 0.00001)))
-        cov = (p.T @ p) / (ls - 1.0)
+        cov = (_p.T @ _p) / (ls - 1.0)
         loss = self.off_diagonal(cov).pow_(2).sum().div(fs) # covariance loss
+        
+        print(f'==================================')
+        print(f'cov: {self.off_diagonal(cov).pow_(2).sum().div(fs) }')
 
         if target == 0:
             _representative_vector = F.normalize(self.representative_vector, dim=0, eps=1e-8) # _representative_vector : fs
             p = F.normalize(p, dim=1, eps=1e-8)
-            loss -= self.weight_diversifying * torch.mean(p @ _representative_vector) # center loss
+            loss -= self.weight_agree * torch.mean(p @ _representative_vector) # cosine loss
+            
+            print(f'cosine: {self.weight_agree * torch.mean(torch.pow(p - _representative_vector, 2).sum(dim=1, keepdim=False))}')
+            print(f'cosine location: {self.representative_vector[:5]}')
         elif target == 1:            
-            loss += self.weight_diversifying * torch.mean(F.relu(self.stddev_disagree - torch.sqrt(p.var(dim=0) + 0.00001))) # variance
+            loss += self.weight_disagree * torch.mean(F.relu(self.stddev_disagree - torch.sqrt(_p.var(dim=0) + 0.00001))) # variance
+            print(f'variance: {self.weight_disagree * torch.mean(F.relu(self.stddev_disagree - torch.sqrt(_p.var(dim=0) + 0.00001)))}')
+            print(f'max variance: {torch.amax(_p.var(dim=0))}')
 
         return loss
+        
     
     def loss_center_vc(self, p: torch.Tensor, target=0):
         """
@@ -298,21 +342,91 @@ class Dtfd_tune(nn.Module):
         """
 
         ls, fs, hn = p.shape
-        p_whiten = p - p.mean(dim=0, keepdim=True).mean(dim=2, keepdim=True) # Length_sequence x fs x Head_num
+        p_whiten = p - p.mean(dim=(0,2), keepdim=True) # Length_sequence x fs x Head_num
         # p_whiten_merged = torch.transpose(p_whiten, 1, 2).view(ls*hn, fs) # (Length_sequence x Head_num) x fs
-        p_whiten_merged = rearrange(torch.transpose(p_whiten, 1, 2), "l h f -> (l h) f") # p_whiten_merged: (Length_sequence x Head_num) x fs
+        p_whiten_merged = rearrange(torch.transpose(p_whiten, 1, 2).contiguous(), "l h f -> (l h) f") # p_whiten_merged: (Length_sequence x Head_num) x fs
         
         cov = (p_whiten_merged.T @ p_whiten_merged) / ((ls*hn) - 1.0)
         loss = self.weight_cov*(self.off_diagonal(cov).pow_(2).sum().div(fs)) # covariance loss
-
+        print(f'==================================')
+        print(f'cov: {self.weight_cov*(self.off_diagonal(cov).pow_(2).sum().div(fs))}')
         if target == 0:
             _representative_vector = self.representative_vector.expand(ls, fs, hn) # _representative_vector : Length_sequence x fs x Head_num
             loss += self.weight_agree * torch.mean(torch.pow(p - _representative_vector, 2).sum(dim=1, keepdim=False)) # center loss
+            print(f'center: {self.weight_agree * torch.mean(torch.pow(p - _representative_vector, 2).sum(dim=1, keepdim=False))}')
+            print(f'center location: {self.representative_vector[0,:5,0]}')
         elif target == 1:
             loss += self.weight_disagree * torch.mean(F.relu(self.stddev_disagree - torch.sqrt(p_whiten.var(dim=2) + 0.00001))) # standard deviation
+            print(f'variance: {self.weight_disagree * torch.mean(F.relu(self.stddev_disagree - torch.sqrt(p_whiten.var(dim=2) + 0.00001)))}')
+            print(f'max variance: {torch.amax(p_whiten.var(dim=2))}')
+        
+        print(f'weight: {[f.weight[0,0].item() for f in self.instance_classifier.fc]}')
+        return loss
+    
+    def loss_div_vc(self, p: torch.Tensor, target=0):
+        """
+        1) cosine(negative)/variance(positive) + 2) Covariance
+ 
+        p: Length_sequence x fs x Head_num
+        """
+
+        ls, fs, hn = p.shape
+        p_whiten_head = p - p.mean(dim=2, keepdim=True) # Length_sequence x fs x Head_num
+        p_whiten = p - p.mean(dim=(0,2), keepdim=True) # Length_sequence x fs x Head_num
+        # p_whiten_merged = torch.transpose(p_whiten, 1, 2).view(ls*hn, fs) # (Length_sequence x Head_num) x fs
+        p_whiten_merged = rearrange(torch.transpose(p_whiten, 1, 2).contiguous(), "l h f -> (l h) f") # p_whiten_merged: (Length_sequence x Head_num) x fs
+        
+        cov = (p_whiten_merged.T @ p_whiten_merged) / ((ls*hn) - 1.0)
+        loss = self.weight_cov*(self.off_diagonal(cov).pow_(2).sum().div(fs)) # covariance loss
+        print(f'==================================')
+        print(f'cov: {self.weight_cov*(self.off_diagonal(cov).pow_(2).sum().div(fs))}')
+        if target == 0:
+            _representative_vector = self.representative_vector.expand(ls*hn, fs) # _representative_vector : (Length_sequence x Head_num) x fs 
+            loss += self.weight_agree * torch.mean(torch.sqrt((p_whiten_merged - _representative_vector).var(dim=0, keepdim=False) + 0.00001))
+            print(f'var_neg: {self.weight_agree * torch.mean(torch.sqrt((p_whiten_merged - _representative_vector).var(dim=0, keepdim=False) + 0.00001))}')
+            print(f'negative center location: {self.representative_vector[0,:5]}')
+            
+        elif target == 1:
+            loss += self.weight_disagree * torch.mean(F.relu(self.stddev_disagree - torch.sqrt(p_whiten_head.var(dim=2) + 0.00001))) # standard deviation
+            print(f'variance: {self.weight_disagree * torch.mean(F.relu(self.stddev_disagree - torch.sqrt(p_whiten_head.var(dim=2) + 0.00001)))}')
+            print(f'max variance: {torch.amax(p_whiten_head.var(dim=2))}')
+        
+        print(f'weight: {[f.weight[0,0].item() for f in self.instance_classifier.fc]}')
+        return loss
+
+    def loss_div_contrastive(self, p: torch.Tensor, target=0):
+        """
+        1) cosine(negative)/variance(positive) + 2) Covariance
+ 
+        p: Length_sequence x fs x Head_num
+        """
+
+        ls, fs, hn = p.shape
+        p_t = torch.transpose(p, 1, 2) # Length_sequence x Head_num x fs
+        p_whiten = p - p.mean(dim=(0,2), keepdim=True) # Length_sequence x fs x Head_num
+        # p_whiten_merged = torch.transpose(p_whiten, 1, 2).view(ls*hn, fs) # (Length_sequence x Head_num) x fs
+        p_whiten_merged = rearrange(torch.transpose(p_whiten, 1, 2).contiguous(), "l h f -> (l h) f") # p_whiten_merged: (Length_sequence x Head_num) x fs
+        
+        cov = (p_whiten_merged.T @ p_whiten_merged) / ((ls*hn) - 1.0)
+        loss = self.weight_cov*(self.off_diagonal(cov).pow_(2).sum().div(fs)) # covariance loss
+        print(f'==================================')
+        print(f'cov: {self.weight_cov*(self.off_diagonal(cov).pow_(2).sum().div(fs))}')
+
+        if target == 0:
+            _representative_vector = F.normalize(self.representative_vector, dim=0, eps=1e-8) # _representative_vector : fs
+            p = F.normalize(p_t, dim=2, eps=1e-8) # p: Length_sequence x Head_num x fs
+            loss -= self.weight_agree * torch.mean(p @ _representative_vector) # Length_sequence x Head_num
+            print(f'cosine loss: {self.weight_agree * torch.mean(p @ _representative_vector)}')
+            print(f'center location: {self.representative_vector[:5]}')
+        elif target == 1:
+            loss += self.weight_disagree * torch.bmm(p_t, p)
+            loss += self.weight_disagree * torch.mean(F.relu(self.stddev_disagree - torch.sqrt(p_whiten.var(dim=2) + 0.00001))) # standard deviation
+            print(f'variance: {self.weight_disagree * torch.mean(F.relu(self.stddev_disagree - torch.sqrt(p_whiten.var(dim=2) + 0.00001)))}')
+            print(f'max variance: {torch.amax(p_whiten.var(dim=2))}')
 
         return loss
     
+
 
     def loss_cosine_vc(self, p: torch.Tensor, target=0):
         """
@@ -322,18 +436,25 @@ class Dtfd_tune(nn.Module):
         """
 
         ls, fs, hn = p.shape
-        p_whiten = p - p.mean(dim=0, keepdim=True).mean(dim=2, keepdim=True) # Length_sequence x fs x Head_num
+        p_whiten = p - p.mean(dim=(0,2), keepdim=True) # Length_sequence x fs x Head_num
         # p_whiten_merged = torch.transpose(p_whiten, 1, 2).view(ls*hn, fs) # (Length_sequence x Head_num) x fs
-        p_whiten_merged = rearrange(torch.transpose(p_whiten, 1, 2), "l h f -> (l h) f") # p_whiten_merged: (Length_sequence x Head_num) x fs
+        p_whiten_merged = rearrange(torch.transpose(p_whiten, 1, 2).contiguous(), "l h f -> (l h) f") # p_whiten_merged: (Length_sequence x Head_num) x fs
+        
         cov = (p_whiten_merged.T @ p_whiten_merged) / ((ls*hn) - 1.0)
         loss = self.weight_cov*(self.off_diagonal(cov).pow_(2).sum().div(fs)) # covariance loss
+        print(f'==================================')
+        print(f'cov: {self.weight_cov*(self.off_diagonal(cov).pow_(2).sum().div(fs))}')
 
         if target == 0:
             _representative_vector = F.normalize(self.representative_vector, dim=0, eps=1e-8) # _representative_vector : fs
             p = F.normalize(torch.transpose(p, 1, 2), dim=2, eps=1e-8) # p: Length_sequence x Head_num x fs
             loss -= self.weight_agree * torch.mean(p @ _representative_vector) # Length_sequence x Head_num
+            print(f'cosine loss: {self.weight_agree * torch.mean(p @ _representative_vector)}')
+            print(f'center location: {self.representative_vector[:5]}')
         elif target == 1:
             loss += self.weight_disagree * torch.mean(F.relu(self.stddev_disagree - torch.sqrt(p_whiten.var(dim=2) + 0.00001))) # standard deviation
+            print(f'variance: {self.weight_disagree * torch.mean(F.relu(self.stddev_disagree - torch.sqrt(p_whiten.var(dim=2) + 0.00001)))}')
+            print(f'max variance: {torch.amax(p_whiten.var(dim=2))}')
 
         return loss
         
@@ -345,11 +466,11 @@ class Dtfd_tune(nn.Module):
         p: Length_sequence x fs
         """
         ls, fs = p.shape
-        p = p - p.mean(dim=0)
-        loss_variance = torch.mean(F.relu(1.0 - torch.sqrt(p.var(dim=0) + 0.00001)))
-        cov = (p.T @ p) / (ls - 1.0)
+        _p = p - p.mean(dim=0)
+        loss_variance = torch.mean(F.relu(1.0 - torch.sqrt(_p.var(dim=0) + 0.00001)))
+        cov = (_p.T @ _p) / (ls - 1.0)
         loss_covariance = self.off_diagonal(cov).pow_(2).sum().div(fs)
-        return (self.weight_diversifying * loss_variance) + loss_covariance
+        return (self.weight_disagree * loss_variance) + (self.weight_cov * loss_covariance)
 
     def off_diagonal(self, x):
         n, m = x.shape
@@ -404,6 +525,7 @@ class Dtfd_tune(nn.Module):
         torch.nn.utils.clip_grad_norm_(self.classifier.parameters(), self.grad_clipping)
         torch.nn.utils.clip_grad_norm_(self.UClassifier.parameters(), self.grad_clipping)
         torch.nn.utils.clip_grad_norm_(self.instance_classifier.parameters(), self.grad_clipping)
+        torch.nn.utils.clip_grad_norm_(self.representative_vector, self.grad_clipping)
 
         self.optimizer0.step()
         self.optimizer1.step()

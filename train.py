@@ -46,7 +46,7 @@ parser.add_argument('--momentum', default=0.9, type=float, help='sgd momentum')
 parser.add_argument('--seed', default=1, type=int, help='seed for initializing training. ')
 
 parser.add_argument('--dataset', default='CAMELYON16', choices=['CAMELYON16', 'tcga_lung', 'tcga_stad'], type=str, help='dataset type')
-parser.add_argument('--aux-loss', default='loss_center_vc', choices=['None', 'loss_dbat', 'loss_jsd', 'loss_vc', 'loss_center', 'loss_cosine', 'loss_center_vc', 'loss_cosine_vc'], type=str, help='auxiliary loss type')
+parser.add_argument('--aux-loss', default='loss_div_vc', choices=['None', 'loss_dbat', 'loss_div_vc', 'loss_vc', 'loss_center', 'loss_var', 'loss_cosine', 'loss_center_vc', 'loss_cosine_vc'], type=str, help='auxiliary loss type')
 parser.add_argument('--num-head', default=5, type=int, help='# of projection head for each instance token')
 # parser.add_argument('--dim-head', default=128, type=int, help='feature dimension for instance token heads')
 parser.add_argument('--layernum-head', default=1, choices=[0,1,2], type=int, help='layer number of projection head for instance tokens')

@@ -11,15 +11,32 @@ class Classifier_instance(nn.Module):
     def __init__(self, n_channels, fs, layernum_head=0, num_head=1):
         super(Classifier_instance, self).__init__()
         if layernum_head == 2:
-            self.fc = nn.ModuleList([nn.Sequential(
+            # self.fc = nn.ModuleList([nn.Sequential(
+            #                             nn.Linear(n_channels, n_channels),
+            #                             nn.LayerNorm(n_channels),
+            #                             nn.ReLU(),
+            #                             # nn.Dropout(0.5),
+            #                             nn.Linear(n_channels, fs)
+            #                         )] * num_head )
+            _temp = []
+            for i in range(num_head):
+                _temp.append(nn.Sequential(
                                         nn.Linear(n_channels, n_channels),
+                                        nn.LayerNorm(n_channels),
                                         nn.ReLU(),
-                                        nn.Dropout(0.5),
+                                        # nn.Dropout(0.5),
                                         nn.Linear(n_channels, fs)
-                                    )] * num_head )
+                                    ))
+                self.fc = nn.ModuleList(_temp)
 
         elif layernum_head == 1:    
-            self.fc = nn.ModuleList([nn.Linear(n_channels, fs)] * num_head)
+            # self.fc = nn.ModuleList([nn.Linear(n_channels, fs)] * num_head)
+
+            _temp = []
+            for i in range(num_head):
+                _temp.append(nn.Linear(n_channels, fs))
+            self.fc = nn.ModuleList(_temp)
+
         elif layernum_head == 0:
             self.fc = nn.Identity()
 
