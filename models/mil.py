@@ -60,8 +60,8 @@ class MilBase(nn.Module):
         self.weight_cov = weight_cov
         self.auxloss_weight = auxloss_weight
         #self.instance_classifier = Classifier_instance(dim_latent, num_head=128, aux_head=aux_head)
-        #self.instance_classifier = Classifier_instance(dim_in, num_head=2, aux_head=aux_head) # dsmil
-        self.instance_classifier = Classifier_instance(dim_latent, num_head=2, aux_head=aux_head) # attention, gatedattention
+        self.instance_classifier = Classifier_instance(dim_in, num_head=2, aux_head=aux_head) # dsmil
+        #self.instance_classifier = Classifier_instance(dim_latent, num_head=2, aux_head=aux_head) # attention, gatedattention
         self.scaler = torch.cuda.amp.GradScaler()
         self.sigmoid = nn.Sigmoid()
         
