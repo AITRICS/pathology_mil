@@ -153,7 +153,7 @@ class Dtfd_tune(nn.Module):
         
         if (aux_loss == 'loss_center') or (aux_loss == 'loss_var') or (aux_loss == 'loss_div_vc'):
             self.representative_vector = nn.Parameter(torch.ones((1, fs)).cuda())
-        elif aux_loss == 'loss_cosine':
+        elif (aux_loss == 'loss_cosine') or (aux_loss=='loss_div_contrastive'):
             self.representative_vector = nn.Parameter(torch.ones((fs)).cuda())
         elif aux_loss == 'loss_center_vc':
             self.representative_vector = nn.Parameter(torch.ones((1, fs, 1)).cuda())
@@ -161,6 +161,10 @@ class Dtfd_tune(nn.Module):
         elif aux_loss == 'loss_cosine_vc':
             self.representative_vector = nn.Parameter(torch.ones((fs)).cuda())
             assert num_head >=3
+
+        if aux_loss=='loss_div_contrastive':
+            self.mask_diag = 1.0-torch.eye(num_head, requires_grad=False).unsqueeze(0).cuda()
+            
 
         self.weight_agree = weight_agree
         self.weight_disagree = weight_disagree
@@ -409,20 +413,20 @@ class Dtfd_tune(nn.Module):
         
         cov = (p_whiten_merged.T @ p_whiten_merged) / ((ls*hn) - 1.0)
         loss = self.weight_cov*(self.off_diagonal(cov).pow_(2).sum().div(fs)) # covariance loss
-        print(f'==================================')
-        print(f'cov: {self.weight_cov*(self.off_diagonal(cov).pow_(2).sum().div(fs))}')
+        # print(f'==================================')
+        # print(f'cov: {self.weight_cov*(self.off_diagonal(cov).pow_(2).sum().div(fs))}')
 
         if target == 0:
             _representative_vector = F.normalize(self.representative_vector, dim=0, eps=1e-8) # _representative_vector : fs
             p = F.normalize(p_t, dim=2, eps=1e-8) # p: Length_sequence x Head_num x fs
             loss -= self.weight_agree * torch.mean(p @ _representative_vector) # Length_sequence x Head_num
-            print(f'cosine loss: {self.weight_agree * torch.mean(p @ _representative_vector)}')
-            print(f'center location: {self.representative_vector[:5]}')
+            # print(f'cosine loss: {self.weight_agree * torch.mean(p @ _representative_vector)}')
+            # print(f'center location: {self.representative_vector[:5]}')
         elif target == 1:
-            loss += self.weight_disagree * torch.bmm(p_t, p)
-            loss += self.weight_disagree * torch.mean(F.relu(self.stddev_disagree - torch.sqrt(p_whiten.var(dim=2) + 0.00001))) # standard deviation
-            print(f'variance: {self.weight_disagree * torch.mean(F.relu(self.stddev_disagree - torch.sqrt(p_whiten.var(dim=2) + 0.00001)))}')
-            print(f'max variance: {torch.amax(p_whiten.var(dim=2))}')
+            loss += self.weight_disagree * torch.sum(torch.bmm(F.normalize(p_t, dim=2, eps=1e-8), F.normalize(p, dim=1, eps=1e-8)) * self.mask_diag)/(ls*hn*(hn-1.0))
+            # loss += self.weight_disagree * torch.mean(F.relu(self.stddev_disagree - torch.sqrt(p_whiten.var(dim=2) + 0.00001))) # standard deviation
+            # print(f'variance: {self.weight_disagree * torch.sum(torch.bmm(F.normalize(p_t, dim=2, eps=1e-8), F.normalize(p, dim=1, eps=1e-8)) * self.mask_diag)/(ls*hn*(hn-1.0))}')
+            # print(f'max variance: {torch.amax(p_whiten.var(dim=2))}')
 
         return loss
     
@@ -442,19 +446,19 @@ class Dtfd_tune(nn.Module):
         
         cov = (p_whiten_merged.T @ p_whiten_merged) / ((ls*hn) - 1.0)
         loss = self.weight_cov*(self.off_diagonal(cov).pow_(2).sum().div(fs)) # covariance loss
-        print(f'==================================')
-        print(f'cov: {self.weight_cov*(self.off_diagonal(cov).pow_(2).sum().div(fs))}')
+        # print(f'==================================')
+        # print(f'cov: {self.weight_cov*(self.off_diagonal(cov).pow_(2).sum().div(fs))}')
 
         if target == 0:
             _representative_vector = F.normalize(self.representative_vector, dim=0, eps=1e-8) # _representative_vector : fs
             p = F.normalize(torch.transpose(p, 1, 2), dim=2, eps=1e-8) # p: Length_sequence x Head_num x fs
             loss -= self.weight_agree * torch.mean(p @ _representative_vector) # Length_sequence x Head_num
-            print(f'cosine loss: {self.weight_agree * torch.mean(p @ _representative_vector)}')
-            print(f'center location: {self.representative_vector[:5]}')
+            # print(f'cosine loss: {self.weight_agree * torch.mean(p @ _representative_vector)}')
+            # print(f'center location: {self.representative_vector[:5]}')
         elif target == 1:
             loss += self.weight_disagree * torch.mean(F.relu(self.stddev_disagree - torch.sqrt(p_whiten.var(dim=2) + 0.00001))) # standard deviation
-            print(f'variance: {self.weight_disagree * torch.mean(F.relu(self.stddev_disagree - torch.sqrt(p_whiten.var(dim=2) + 0.00001)))}')
-            print(f'max variance: {torch.amax(p_whiten.var(dim=2))}')
+            # print(f'variance: {self.weight_disagree * torch.mean(F.relu(self.stddev_disagree - torch.sqrt(p_whiten.var(dim=2) + 0.00001)))}')
+            # print(f'max variance: {torch.amax(p_whiten.var(dim=2))}')
 
         return loss
         
