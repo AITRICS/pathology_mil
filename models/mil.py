@@ -5,6 +5,7 @@ import math
 from typing import List
 import torch.optim as optim
 from utils import CosineAnnealingWarmUpSingle, CosineAnnealingWarmUpRestarts
+from einops import rearrange
 
 
 class Classifier_instance(nn.Module):
@@ -32,7 +33,7 @@ class Classifier_instance(nn.Module):
 
 
 class MilBase(nn.Module):
-    def __init__(self, args, optimizer=None, criterion=None, scheduler=None, dim_in:int=2048, dim_latent: int=512, dim_out=1):
+    def __init__(self, args, optimizer=None, criterion=None, scheduler=None, dim_in:int=2048, dim_latent: int=512, dim_out=1, aux_loss=None, aux_head=None, weight_cov=None, auxloss_weight=None):
         super().__init__()
         self.args = args
         self.optimizer = optimizer
@@ -54,9 +55,92 @@ class MilBase(nn.Module):
         self.dim_in = dim_in
         self.dim_latent = dim_latent
         self.dim_out = dim_out
+        self.aux_loss = aux_loss
+        self.aux_head = aux_head
+        self.weight_cov = weight_cov
+        self.auxloss_weight = auxloss_weight
+        #self.instance_classifier = Classifier_instance(dim_latent, num_head=128, aux_head=aux_head)
+        #self.instance_classifier = Classifier_instance(dim_in, num_head=2, aux_head=aux_head) # dsmil
+        self.instance_classifier = Classifier_instance(dim_latent, num_head=2, aux_head=aux_head) # attention, gatedattention
         self.scaler = torch.cuda.amp.GradScaler()
         self.sigmoid = nn.Sigmoid()
+        
+        if aux_loss != 'None':
+            self.criterion_aux = getattr(self, aux_loss)
+        else:
+            assert aux_head == 0
 
+    def loss_dbat(self, p: torch.Tensor, target=0):
+        """
+        D-BAT
+        p: Length_sequence x Head_num(2)
+        """
+        
+        if target == 0:
+            loss = self.criterion(p, torch.zeros_like(p, device=p.get_device()))            
+        elif target == 1:
+            p = torch.sigmoid(p)
+            loss = -torch.log(p[:,0]*(1.0-p[:,1]) + (1.0-p[:,0])*p[:,1] +  1e-7).mean()
+        # (- torch.log(p_1_s[i] * (1-p_2_s[i]) + p_2_s[i] * (1-p_1_s[i]) +  1e-7)).mean()
+        return loss
+
+    def loss_jsd(self, p: torch.Tensor, target=0):
+        """
+        Jensen-Shannon Divergence
+        p: Length_sequence x Head_num(2)
+        """
+        if target == 0:
+            return self.criterion(p, torch.zeros_like(p, device=p.get_device()))
+        elif target == 1:
+            p = torch.sigmoid(p)
+            return 0.5*(F.kl_div(p[:,0], p[:,1], reduction='batchmean', log_target=False) + F.kl_div(p[:,1], p[:,0], reduction='batchmean', log_target=False))
+    
+    def loss_vc(self, p: torch.Tensor, target=None):
+        """
+        Variance + Covariance
+ 
+        p: Length_sequence x fs
+        """
+        ls, fs = p.shape
+        p = p - p.mean(dim=0)
+        loss_variance = torch.mean(F.relu(1.0 - torch.sqrt(p.var(dim=0) + 0.00001)))
+        cov = (p.T @ p) / (ls - 1.0)
+        loss_covariance = self.off_diagonal(cov).pow_(2).sum().div(fs)
+        return loss_variance + (self.weight_cov * loss_covariance)
+
+
+    def loss_divdis(self, p: torch.Tensor, target=0):
+        """
+        Length_sequence x Head_num
+        notation : H - head , D - num_class, B - sequence length(본 논문의 batch size)
+        """    
+        if target == 0:
+            return self.criterion(p, torch.zeros_like(p, device=p.get_device()))
+        elif target ==1:
+            p = p.sigmoid().unsqueeze(-1) 
+            p = torch.cat([p, 1 - p], dim=-1) # B, H, D
+            marginal_p = p.mean(dim=0)  # H, D 
+            marginal_p = torch.einsum("hd,ge->hgde", marginal_p, marginal_p)  # H, H, D, D
+            marginal_p = rearrange(marginal_p, "h g d e -> (h g) (d e)")  # H^2, D^2
+
+            joint_p = torch.einsum("bhd,bge->bhgde", p, p).mean(dim=0)  # H, H, D, D
+            joint_p = rearrange(joint_p, "h g d e -> (h g) (d e)")  # H^2, D^2
+
+            # Compute pairwise mutual information = KL(P_XY | P_X x P_Y)
+            # Equivalent to: F.kl_div(marginal_p.log(), joint_p, reduction="none")
+            kl_computed = joint_p * (joint_p.log() - marginal_p.log()) 
+            kl_computed = kl_computed.sum(dim=-1)
+            kl_grid = rearrange(kl_computed, "(h g) -> h g", h=p.shape[1])
+            repulsion_grid = -kl_grid
+            repulsion_grid = torch.triu(repulsion_grid, diagonal=1)
+            repulsions = repulsion_grid[repulsion_grid.nonzero(as_tuple=True)] # 처음에 non_zero인게 없음
+            if torch.sum(repulsions) ==0:
+                repulsion_loss = 1e-7
+            else : 
+                repulsion_loss = -repulsions.mean()
+
+            return repulsion_loss
+        
     def set_optimizer(self):
 
         if self.optimizer is None:
@@ -67,7 +151,11 @@ class MilBase(nn.Module):
                 self.scheduler = CosineAnnealingWarmUpSingle(self.optimizer, max_lr=self.args.lr, epochs=self.args.epochs, steps_per_epoch=self.args.num_step)
             elif self.args.scheduler == 'multi':
                 self.scheduler = CosineAnnealingWarmUpRestarts(self.optimizer, eta_max=self.args.lr, step_total=self.args.epochs*self.args.num_step)
-
+        
+        if self.aux_head != 0:
+            self.optimizer2 = torch.optim.Adam(self.instance_classifier.parameters(), lr=self.args.lr,  weight_decay=1e-4) ## psuedo bag
+            self.scheduler2 = torch.optim.lr_scheduler.MultiStepLR(self.optimizer2, '[100]', gamma=0.2)  
+            
     def forward(self, x: torch.Tensor):
         """
         <INPUT>
@@ -88,7 +176,7 @@ class MilBase(nn.Module):
         prob_bag: #bags x #class
         prob_instance: #bags x #instances x #class
         """
-        logit_bag, logit_instance = self.forward(x)
+        logit_bag, logit_instance,_ = self.forward(x)
 
         prob_bag = self.sigmoid(logit_bag)
         prob_instance = self.sigmoid(logit_instance) if logit_instance is not None else None
@@ -116,7 +204,13 @@ class MilBase(nn.Module):
         
         self.optimizer.zero_grad()
         with torch.cuda.amp.autocast():
-            loss = self.calculate_objective(X, Y)
+            loss1, loss2 = self.calculate_objective(X, Y)
+            
+        if self.aux_loss != 'None':
+            loss = loss1 + (self.auxloss_weight * loss2)
+        else:
+            loss = loss1
+
         # print("loss: ", loss)
         self.scaler.scale(loss).backward()
         self.scaler.step(self.optimizer)
@@ -157,7 +251,7 @@ class MilCustom(MilBase):
     def calculate_objective(self, X, Y):
         logit_bag, _ = self.forward(X)
         loss = self.criterion(logit_bag, Y)
-
+    
         return loss    
 
 
@@ -214,7 +308,7 @@ class MilTransformer(MilBase):
         self.pseudo_prob_threshold = pseudo_prob_threshold
         
         self.set_optimizer()
-
+        
     def forward(self, x: torch.Tensor):
         x = torch.cat([self.cls_token, self.encoder(x)], dim=1) # #slide x (1 + #patches) x dim_latent
 

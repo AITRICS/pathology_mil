@@ -52,7 +52,7 @@ class Attention(MilBase):
 
         # H = self.feature_extractor_part1(x)
         # H = H.view(-1, 50 * 4 * 4)
-        H = self.encoder(x)  # BxNxL
+        H = self.encoder(x)  # BxNxL 
 # H: seq(=-1) x self.L,    seq=K
         A = self.attention(H)  # BxNxK
         # A = self.attention(x)  
@@ -69,7 +69,10 @@ class Attention(MilBase):
 
         # return Y_prob, Y_hat, A
         # return F.sigmoid(Y_logit), Y_logit, Y_hat
-        return logit_bag, None
+        
+        
+        logit_instances = self.instance_classifier(H)
+        return logit_bag, None, logit_instances.squeeze(0)
 
     # # AUXILIARY METHODS
     # def calculate_classification_error(self, X, Y):
@@ -82,14 +85,17 @@ class Attention(MilBase):
     def calculate_objective(self, X, Y):
         # Y = Y.float()
         # Y_prob, _, A = self.forward(X)
-        logit_bag, _ = self.forward(X)
-        loss = self.criterion(logit_bag, Y)
+        logit_bag, _, logit_instances = self.forward(X)
+        loss1 = self.criterion(logit_bag, Y)
         # Y_prob = F.sigmoid(logit_bag)
         # Y_prob = torch.clamp(Y_prob, min=1e-5, max=1. - 1e-5)
         # neg_log_likelihood = -1. * (Y * torch.log(Y_prob) + (1. - Y) * torch.log(1. - Y_prob))  # negative log bernoulli
-
+        if self.aux_loss != 'None':
+            loss2 = self.criterion_aux(logit_instances, Y[0, 0])
+        else:
+            loss2 = None
         # return neg_log_likelihood, A
-        return loss
+        return loss1, loss2
 
 
 class GatedAttention(MilBase):
@@ -162,7 +168,8 @@ class GatedAttention(MilBase):
         # Y_hat = torch.sign(F.relu(Y_logit)).float()
 
         # return F.sigmoid(Y_logit), Y_logit, Y_hat
-        return logit_bag, None
+        logit_instances = self.instance_classifier(H)
+        return logit_bag, None, logit_instances.squeeze(0)
 
     # # AUXILIARY METHODS
     # def calculate_classification_error(self, X, Y):
@@ -174,9 +181,14 @@ class GatedAttention(MilBase):
 
     def calculate_objective(self, X, Y):
         Y = Y.float()
-        logit_bag, _ = self.forward(X)
-        loss = self.criterion(logit_bag, Y)
-        return loss
+        logit_bag, _ ,logit_instances= self.forward(X)
+        loss1 = self.criterion(logit_bag, Y)
+        if self.aux_loss != 'None':
+            loss2 = self.criterion_aux(logit_instances, Y[0, 0])
+        else:
+            loss2 = None
+        # return neg_log_likelihood, A
+        return loss1, loss2
         # Y_prob = F.sigmoid(logit_bag)
         # Y_prob = torch.clamp(Y_prob, min=1e-5, max=1. - 1e-5)
         # neg_log_likelihood = -1. * (Y * torch.log(Y_prob) + (1. - Y) * torch.log(1. - Y_prob))  # negative log bernoulli

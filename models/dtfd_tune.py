@@ -242,10 +242,8 @@ class Dtfd_tune(nn.Module):
         cov = (p.T @ p) / (ls - 1.0)
         loss_covariance = self.off_diagonal(cov).pow_(2).sum().div(fs)
         return loss_variance + (self.weight_cov * loss_covariance)
-    
-    
-    
-    ### Here
+
+
     def loss_divdis(self, p: torch.Tensor, target=0):
         """
         Length_sequence x Head_num

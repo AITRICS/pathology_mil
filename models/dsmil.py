@@ -64,16 +64,17 @@ class BClassifier(nn.Module):
         return C, A, B 
     
 class MILNet(nn.Module):
-    def __init__(self, i_classifier, b_classifier):
+    def __init__(self, i_classifier, b_classifier, instance_classifier):
         super(MILNet, self).__init__()
         self.i_classifier = i_classifier
         self.b_classifier = b_classifier
-        
+        self.instance_classifier = instance_classifier
     def forward(self, x):
-        feats, classes = self.i_classifier(x)
-        prediction_bag, A, B = self.b_classifier(feats, classes)
+        feats, classes = self.i_classifier(x) # feats = instance embedding [seq x dim_in]
+        prediction_bag, A, B = self.b_classifier(feats, classes) # A =  instance_logit [seq x 1], B = bag embedding [1,1,dim_in]
         
-        return classes, prediction_bag, A, B
+        logit_instances = self.instance_classifier(feats)
+        return classes, prediction_bag, A, B , logit_instances
         
         # args=args, optimizer=None, criterion=None, scheduler=None, dim_in=dim_in, dim_latent=512, dim_out=args.num_classes
 class Dsmil(MilBase):
@@ -82,7 +83,7 @@ class Dsmil(MilBase):
         
         self.i_classifier = FCLayer(in_size=self.dim_in, out_size=self.dim_out)
         self.b_classifier = BClassifier(input_size=self.dim_in, output_class=self.dim_out)
-        self.milnet = MILNet(self.i_classifier, self.b_classifier)
+        self.milnet = MILNet(self.i_classifier, self.b_classifier, self.instance_classifier)
 
         self.optimizer = torch.optim.Adam(self.parameters(), lr=self.args.lr, betas=(0.5, 0.9), weight_decay=0.005)
         # self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, self.args.num_epochs, 0.000005)
@@ -92,19 +93,24 @@ class Dsmil(MilBase):
         dsmil_input = x.squeeze(0)
         # logit_instance: #instance x self.dim_out
         # logit_bag: 1 x self.dim_out
-        logit_instance, logit_bag, _, _ = self.milnet(dsmil_input) # ins_prediction (num_patch, n) bag_prediction (1,n)        
-        return logit_bag, logit_instance.unsqueeze(0)
+        logit_instance, logit_bag, _, _, logit_instances = self.milnet(dsmil_input) # ins_prediction (num_patch, n) bag_prediction (1,n)        
+        return logit_bag, logit_instance.unsqueeze(0) ,logit_instances
         # average 해야함
     
     def calculate_objective(self, X, Y):
-        logit_bag, logit_instance = self.forward(X)
+        logit_bag, logit_instance, logit_instances = self.forward(X) # bs x num_seq x c
         max_logit_instance, _ = torch.max(logit_instance, 1)        # (1,n)
         bag_loss = self.criterion(logit_bag.view(1, -1), Y.view(1, -1)) # num class n : BCE([1,n],[1,n]), BCEWithLogitsLoss()
         max_loss = self.criterion(max_logit_instance.view(1, -1), Y.view(1, -1))
         
-        return 0.5*bag_loss + 0.5*max_loss
+        if self.aux_loss != 'None':
+            loss2 = self.criterion_aux(logit_instances, Y[0, 0])
+        else:
+            loss2 = None
+        
+        return 0.5*bag_loss + 0.5*max_loss, loss2
     
     def infer(self, x: torch.Tensor):
-        logit_bag, logit_instance = self.forward(x)
+        logit_bag, logit_instance ,_= self.forward(x)
         max_logit_instance, _ = torch.max(logit_instance, 1)        # (1,n)
         return 0.5*torch.sigmoid(max_logit_instance)+0.5*torch.sigmoid(logit_bag), None

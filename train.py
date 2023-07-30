@@ -58,7 +58,7 @@ parser.add_argument('--epochs', default=100, type=int, metavar='N', help='number
 parser.add_argument('--lr', default=0.0001, type=float, metavar='LR', help='initial learning rate', dest='lr')
 # DTFD: 1e-4, TransMIL: 1e-5
 parser.add_argument('--weight-decay', default=1e-5, type=float, metavar='W', help='weight decay (default: 1e-5)', dest='weight_decay')
-parser.add_argument('--mil-model', default='Dtfd_tune', choices=['MilTransformer', 'monai.max','monai.att','monai.att_trans','milmax', 'milmean', 'Attention', 'GatedAttention','Dsmil','milrnn','Dtfd', 'Dtfd_tune'], type=str, help='use pre-training method')
+parser.add_argument('--mil-model', default='milrnn', choices=['MilTransformer', 'monai.max','monai.att','monai.att_trans','milmax', 'milmean', 'Attention', 'GatedAttention','Dsmil','milrnn','Dtfd', 'Dtfd_tune'], type=str, help='use pre-training method')
 parser.add_argument('--if-learn-instance', default=False, help='if_learn_instance')
 parser.add_argument('--share-proj', default=False, help='if share projection')
 parser.add_argument('--pseudo-prob-threshold', default=0.8, type=float, help='pseudo_prob_threshold')
@@ -265,9 +265,9 @@ if __name__ == '__main__':
         f.write(f'AUC TEST (Average): {np.mean(auc_fold_test)}\n')
         f.write(f'==========================================================================================\n\n\n')
     
-    if args.pushtoken:
-        from pushbullet import API
-        import socket
-        pb = API()
-        pb.set_token(args.pushtoken)
-        push = pb.send_note('MIL train finished', f'{socket.gethostname()}')
+    # if args.pushtoken:
+    #     from pushbullet import API
+    #     import socket
+    #     pb = API()
+    #     pb.set_token(args.pushtoken)
+    #     push = pb.send_note('MIL train finished', f'{socket.gethostname()}')
