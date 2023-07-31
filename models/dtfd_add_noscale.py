@@ -116,8 +116,8 @@ def get_cam_1d(classifier, features):
     cam_maps = torch.einsum('bgf,cf->bcg', [features, tweight])
     return cam_maps    
     
-class Dtfd(nn.Module):
-    def __init__(self,args, optimizer=None, criterion=None, scheduler=None,encoder=None, dim_in:int=2048, dim_latent=512, dim_out=1, **kwargs):
+class Dtfd_add_noscale(nn.Module):
+    def __init__(self,args, optimizer=None, criterion=None, scheduler=None,encoder=None, dim_in:int=2048, dim_latent=512, dim_out=1):
         super().__init__()
         self.dim_in = dim_in
         self.dim_out = dim_out
@@ -135,10 +135,9 @@ class Dtfd(nn.Module):
         self.sigmoid = nn.Sigmoid()
         
         # update
-        self.optimizer0 = torch.optim.Adam(list(self.classifier.parameters())+ list(self.attention.parameters())+list(self.dimReduction.parameters()), lr=args.lr,  weight_decay=1e-4)
-        self.optimizer1 = torch.optim.Adam(self.UClassifier.parameters(), lr=args.lr,  weight_decay=1e-4)
-        self.scheduler0 = torch.optim.lr_scheduler.MultiStepLR(self.optimizer0, '[100]', gamma=0.2)
-        self.scheduler1 = torch.optim.lr_scheduler.MultiStepLR(self.optimizer1, '[100]', gamma=0.2)        
+        self.optimizer = torch.optim.Adam(list(self.classifier.parameters())+ list(self.attention.parameters())+list(self.dimReduction.parameters())+list(self.UClassifier.parameters()), lr=args.lr,  weight_decay=1e-4)
+        
+        self.scheduler = torch.optim.lr_scheduler.MultiStepLR(self.optimizer, '[100]', gamma=0.2)    
         
     def first_tier(self, x: torch.Tensor) :
         slide_sub_preds = []
@@ -206,22 +205,22 @@ class Dtfd(nn.Module):
         X: #bags x #instances x #dims => encoded patches
         Y: #bags x #classes  ==========> slide-level label        
         """
-        self.optimizer0.zero_grad()
-        self.optimizer1.zero_grad()
-        with torch.cuda.amp.autocast():
-            loss0, loss1 = self.calculate_objective(X, Y)
-        loss0.backward(retain_graph=True)
-        loss1.backward()
+        self.optimizer.zero_grad()
+        
+        # with torch.cuda.amp.autocast():
+        loss0, loss1 = self.calculate_objective(X, Y)
+        loss = loss0 + loss1
+        
+        loss.backward()
         torch.nn.utils.clip_grad_norm_(self.dimReduction.parameters(), self.grad_clipping)
         torch.nn.utils.clip_grad_norm_(self.attention.parameters(), self.grad_clipping)
         torch.nn.utils.clip_grad_norm_(self.classifier.parameters(), self.grad_clipping)   
         torch.nn.utils.clip_grad_norm_(self.UClassifier.parameters(), self.grad_clipping)
 
-        self.optimizer0.step()
-        self.optimizer1.step()
+        self.optimizer.step()        
 
-        self.scheduler0.step()
-        self.scheduler1.step()
+        self.scheduler.step()
+        
 
     def infer(self, x: torch.Tensor):
         """

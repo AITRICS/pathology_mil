@@ -116,7 +116,7 @@ def get_cam_1d(classifier, features):
     cam_maps = torch.einsum('bgf,cf->bcg', [features, tweight])
     return cam_maps    
     
-class Dtfd(nn.Module):
+class Dtfd_scale(nn.Module):
     def __init__(self,args, optimizer=None, criterion=None, scheduler=None,encoder=None, dim_in:int=2048, dim_latent=512, dim_out=1, **kwargs):
         super().__init__()
         self.dim_in = dim_in
@@ -133,6 +133,7 @@ class Dtfd(nn.Module):
         self.grad_clipping = 5
         self.device = args.device
         self.sigmoid = nn.Sigmoid()
+        self.scaler = torch.cuda.amp.GradScaler()
         
         # update
         self.optimizer0 = torch.optim.Adam(list(self.classifier.parameters())+ list(self.attention.parameters())+list(self.dimReduction.parameters()), lr=args.lr,  weight_decay=1e-4)
@@ -210,16 +211,22 @@ class Dtfd(nn.Module):
         self.optimizer1.zero_grad()
         with torch.cuda.amp.autocast():
             loss0, loss1 = self.calculate_objective(X, Y)
-        loss0.backward(retain_graph=True)
-        loss1.backward()
+        # loss0.backward(retain_graph=True)
+        # loss1.backward()
+        self.scaler.scale(loss0).backward(retain_graph=True)
+        self.scaler.scale(loss1).backward()
+
         torch.nn.utils.clip_grad_norm_(self.dimReduction.parameters(), self.grad_clipping)
         torch.nn.utils.clip_grad_norm_(self.attention.parameters(), self.grad_clipping)
         torch.nn.utils.clip_grad_norm_(self.classifier.parameters(), self.grad_clipping)   
         torch.nn.utils.clip_grad_norm_(self.UClassifier.parameters(), self.grad_clipping)
 
-        self.optimizer0.step()
-        self.optimizer1.step()
-
+        # self.optimizer0.step()
+        # self.optimizer1.step()
+        self.scaler.step(self.optimizer0)
+        self.scaler.step(self.optimizer1)
+        self.scaler.update()
+        
         self.scheduler0.step()
         self.scheduler1.step()
 

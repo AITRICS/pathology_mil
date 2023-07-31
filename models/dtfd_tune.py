@@ -155,7 +155,7 @@ class Dtfd_tune(nn.Module):
             assert layernum_head == 0
         
         if (aux_loss == 'loss_center') or (aux_loss == 'loss_var') or (aux_loss == 'loss_div_vc'):
-            self.representative_vector = nn.Parameter(torch.ones((1, fs)).cuda())
+            self.representative_vector = nn.Parameter(torch.ones((1, fs), requires_grad=True).cuda())
         elif (aux_loss == 'loss_contrastive') or (aux_loss=='loss_div_contrastive'):
             self.representative_vector = nn.Parameter(torch.ones((fs)).cuda())
         elif aux_loss == 'loss_center_vc':
@@ -173,19 +173,26 @@ class Dtfd_tune(nn.Module):
         self.weight_disagree = weight_disagree
         self.weight_cov = weight_cov
         self.stddev_disagree = stddev_disagree
-        
+        self.layernum_head = layernum_head
         # update
         self.optimizer0 = torch.optim.Adam(list(self.classifier.parameters())+list(self.attention.parameters())+list(self.dimReduction.parameters()), lr=args.lr,  weight_decay=1e-4)
         self.optimizer1 = torch.optim.Adam(self.UClassifier.parameters(), lr=args.lr,  weight_decay=1e-4) ## psuedo bag
-        if layernum_head != 0:
-            self.optimizer2 = torch.optim.Adam(list(self.instance_classifier.parameters())+[self.representative_vector], lr=args.lr,  weight_decay=1e-4)
-        else:
-            self.optimizer2 = torch.optim.Adam([self.representative_vector], lr=args.lr,  weight_decay=1e-4)
+        # self.optimizer2 = torch.optim.SGD([self.representative_vector], lr=args.lr_aux, momentum=0.9, weight_decay=0.0)
+        self.optimizer2 = torch.optim.SGD(list(self.instance_classifier.parameters())+[self.representative_vector], lr=args.lr_center, weight_decay=0.0)
+        self.optimizer_all = torch.optim.Adam(list(self.classifier.parameters())+list(self.attention.parameters())+list(self.dimReduction.parameters())
+                                             +list(self.UClassifier.parameters())+list(self.instance_classifier.parameters())+[self.representative_vector], lr=args.lr_center, weight_decay=0.0)
+        # if layernum_head != 0:
+        #     self.optimizer3 = torch.optim.SGD(params=self.instance_classifier.parameters(), lr=args.lr_aux, momentum=0.9, weight_decay=1e-3)
+        # else:
+        #     self.optimizer2 = torch.optim.Adam([self.representative_vector], lr=args.lr_aux,  weight_decay=1e-4)
+        #     self.optimizer3 = torch.optim.SGD(params=[self.representative_vector], lr=args.lr_aux, momentum=0.9, weight_decay=0)
 
         self.scheduler0 = torch.optim.lr_scheduler.MultiStepLR(self.optimizer0, '[100]', gamma=0.2)
         self.scheduler1 = torch.optim.lr_scheduler.MultiStepLR(self.optimizer1, '[100]', gamma=0.2)
-        if hasattr(self, 'optimizer2'):
-            self.scheduler2 = torch.optim.lr_scheduler.MultiStepLR(self.optimizer2, '[100]', gamma=0.2)       
+        self.scheduler2 = torch.optim.lr_scheduler.MultiStepLR(self.optimizer2, '[100]', gamma=0.2)  
+        self.scheduler_all = torch.optim.lr_scheduler.MultiStepLR(self.optimizer_all, '[100]', gamma=0.2)     
+        # if hasattr(self, 'optimizer3'):
+        #     self.scheduler3 = torch.optim.lr_scheduler.MultiStepLR(self.optimizer3, '[100]', gamma=0.2)       
         
     def first_tier(self, x: torch.Tensor):
         slide_sub_preds = []
@@ -388,18 +395,18 @@ class Dtfd_tune(nn.Module):
         
         cov = (p_whiten_merged.T @ p_whiten_merged) / ((ls*hn) - 1.0)
         loss = self.weight_cov*(self.off_diagonal(cov).pow_(2).sum().div(fs)) # covariance loss
-        # print(f'==================================')
-        # print(f'cov: {self.weight_cov*(self.off_diagonal(cov).pow_(2).sum().div(fs))}')
+        print(f'==================================')
+        print(f'cov: {self.weight_cov*(self.off_diagonal(cov).pow_(2).sum().div(fs))}')
         if target == 0:
             _representative_vector = self.representative_vector.expand(ls*hn, fs) # _representative_vector : (Length_sequence x Head_num) x fs 
             loss += self.weight_agree * torch.mean(torch.sqrt((p_whiten_merged - _representative_vector).var(dim=0, keepdim=False) + 0.00001))
-            # print(f'var_neg: {self.weight_agree * torch.mean(torch.sqrt((p_whiten_merged - _representative_vector).var(dim=0, keepdim=False) + 0.00001))}')
-            # print(f'negative center location: {self.representative_vector[0,:5]}')
+            print(f'var_neg: {self.weight_agree * torch.mean(torch.sqrt((p_whiten_merged - _representative_vector).var(dim=0, keepdim=False) + 0.00001))}')
+            print(f'negative center location: {self.representative_vector[0,:5]}')
             
         elif target == 1:
             loss += self.weight_disagree * torch.mean(F.relu(self.stddev_disagree - torch.sqrt(p_whiten_head.var(dim=2) + 0.00001))) # standard deviation
-            # print(f'variance: {self.weight_disagree * torch.mean(F.relu(self.stddev_disagree - torch.sqrt(p_whiten_head.var(dim=2) + 0.00001)))}')
-            # print(f'max variance: {torch.amax(p_whiten_head.var(dim=2))}')
+            print(f'variance: {self.weight_disagree * torch.mean(F.relu(self.stddev_disagree - torch.sqrt(p_whiten_head.var(dim=2) + 0.00001)))}')
+            print(f'max variance: {torch.amax(p_whiten_head.var(dim=2))}')
         
         # print(f'weight: {[f.weight[0,0].item() for f in self.instance_classifier.fc]}')
         return loss
@@ -518,34 +525,43 @@ class Dtfd_tune(nn.Module):
         X: #bags x #instances x #dims => encoded patches
         Y: #bags x #classes  ==========> slide-level label
         """
-        self.optimizer0.zero_grad()
-        self.optimizer1.zero_grad()
-        with torch.cuda.amp.autocast():
-            loss0, loss1, loss2 = self.calculate_objective(X, Y)
+        # self.optimizer0.zero_grad()
+        # self.optimizer1.zero_grad()
+        self.optimizer_all.zero_grad()
+        # self.optimizer3.zero_grad()
+        # with torch.cuda.amp.autocast():
+        loss0, loss1, loss2 = self.calculate_objective(X, Y)
         # print(f'{loss0.item()}, {loss1.item()}, {loss2.item()}')
-        loss0.backward(retain_graph=True)
-        if self.aux_loss != 'None':
-            loss1.backward(retain_graph=True)
-            loss2.backward()
-        else:
-            loss1.backward()
-
+        # loss0.backward(retain_graph=True)
+        # if self.aux_loss != 'None':
+        #     loss1.backward(retain_graph=True)
+        #     loss2.backward()
+        # else:
+        #     loss1.backward()
+        loss=loss0+loss1+loss2
+        loss.backward()
         torch.nn.utils.clip_grad_norm_(self.dimReduction.parameters(), self.grad_clipping)
         torch.nn.utils.clip_grad_norm_(self.attention.parameters(), self.grad_clipping)
         torch.nn.utils.clip_grad_norm_(self.classifier.parameters(), self.grad_clipping)
         torch.nn.utils.clip_grad_norm_(self.UClassifier.parameters(), self.grad_clipping)
-        torch.nn.utils.clip_grad_norm_(self.instance_classifier.parameters(), self.grad_clipping)
-        torch.nn.utils.clip_grad_norm_(self.representative_vector, self.grad_clipping)
+        # torch.nn.utils.clip_grad_norm_(self.instance_classifier.parameters(), self.grad_clipping)
+        # torch.nn.utils.clip_grad_norm_(self.representative_vector, self.grad_clipping)
 
-        self.optimizer0.step()
-        self.optimizer1.step()
-        if self.num_head != 0:
-            self.optimizer2.step()
+        # self.optimizer0.step()
+        # self.optimizer1.step()
+        # self.optimizer2.step()
+        self.optimizer_all.step()
+        
+        print(f'EXAMPLE: {self.representative_vector.cpu().detach().numpy()[0,:4].tolist()}, {self.instance_classifier.fc[0][0].weight.cpu().detach().numpy()[0,:4].tolist()}')
+        # if self.layernum_head != 0:
+        # self.optimizer3.step()
 
-        self.scheduler0.step()
-        self.scheduler1.step()
-        if self.num_head != 0:
-            self.scheduler2.step()
+        # self.scheduler0.step()
+        # self.scheduler1.step()
+        # self.scheduler2.step()
+        self.scheduler_all.step()
+        # if self.layernum_head != 0:
+        # self.scheduler3.step()
 
 
     def infer(self, x: torch.Tensor):

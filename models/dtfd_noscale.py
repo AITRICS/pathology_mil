@@ -116,7 +116,7 @@ def get_cam_1d(classifier, features):
     cam_maps = torch.einsum('bgf,cf->bcg', [features, tweight])
     return cam_maps    
     
-class Dtfd(nn.Module):
+class Dtfd_noscale(nn.Module):
     def __init__(self,args, optimizer=None, criterion=None, scheduler=None,encoder=None, dim_in:int=2048, dim_latent=512, dim_out=1, **kwargs):
         super().__init__()
         self.dim_in = dim_in
@@ -208,8 +208,8 @@ class Dtfd(nn.Module):
         """
         self.optimizer0.zero_grad()
         self.optimizer1.zero_grad()
-        with torch.cuda.amp.autocast():
-            loss0, loss1 = self.calculate_objective(X, Y)
+        # with torch.cuda.amp.autocast():
+        loss0, loss1 = self.calculate_objective(X, Y)
         loss0.backward(retain_graph=True)
         loss1.backward()
         torch.nn.utils.clip_grad_norm_(self.dimReduction.parameters(), self.grad_clipping)
