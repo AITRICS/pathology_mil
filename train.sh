@@ -2,15 +2,15 @@
 gpu=1
 dataset=CAMELYON16
 milmodel=Dtfd_add_scale
-milmodel=Dtfd_add_noscale
-milmodel=Dtfd_scale
-milmodel=Dtfd_noscale
+# milmodel=Dtfd_add_noscale
+# milmodel=Dtfd_scale
+# milmodel=Dtfd_noscale
 
 aux_loss=None
 # aux_loss=loss_jsd
 # aux_loss=loss_vc
 # aux_head=2
-# layernum_head=0
+layernum_head=0
 # num_head=1
 # weight_agree=1.0
 # weight_disagree=0.1
@@ -27,7 +27,7 @@ for lr_downstream in 0.03 0.01 0.003 0.001 0.0003 0.0001 0.00003; do
     # optimizer=sgd
     # CUDA_VISIBLE_DEVICES=$gpu nohup python train_mil_sam.py --dataset $dataset --pretrain-type $lr_pretrained --epochs 100 --optimizer $optimizer --lr $lr_downstream --weight-decay 1e-4 --scheduler $scheduler --pushtoken o.OsyxHt1pZuwUBoMEFYBuzHFNjV5ekr95 > ${lr_pretrained}_LR_${lr_downstream}_sch_${scheduler}_opt_${optimizer}_sam.txt &
     # optimizer=adamw
-    CUDA_VISIBLE_DEVICES=$gpu nohup python train.py --layernum-head $layernum_head --num-head $num_head --weight-agree $weight_agree --weight-disagree $weight_disagree --weight-cov $weight_cov --mil-model $milmodel --dataset $dataset --data-root $data_root --epochs 200 --workers 4 --aux-loss $aux_loss --weight-cov $weight_cov --lr $lr_downstream --pushtoken o.OsyxHt1pZuwUBoMEFYBuzHFNjV5ekr95 > LR_${lr_downstream}_milmodel_${milmodel}_gpu_${gpu}.txt &
+    CUDA_VISIBLE_DEVICES=$gpu nohup python train.py --mil-model $milmodel --dataset $dataset --data-root $data_root --epochs 200 --workers 4 --lr $lr_downstream --pushtoken o.OsyxHt1pZuwUBoMEFYBuzHFNjV5ekr95 > LR_${lr_downstream}_milmodel_${milmodel}_gpu_${gpu}.txt &
     # CUDA_VISIBLE_DEVICES=$gpu nohup python train_mil_sam.py --dataset $dataset --pretrain-type ${lr_pretrained} --epochs 100 --optimizer $optimizer --lr $lr_downstream --weight-decay 1e-4 --scheduler $scheduler > ${lr_pretrained}_LR_${lr_downstream}_sch_${scheduler}_opt_${optimizer}.txt &
 
     (( gpu+=1 ))
