@@ -127,6 +127,9 @@ class Dtfd_tune(nn.Module):
             fs = dim_out
         else:
             fs = 128
+        
+        if layernum_head == 0:
+            fs = 512
 
         self.dim_in = dim_in
         self.dim_out = dim_out
@@ -175,11 +178,13 @@ class Dtfd_tune(nn.Module):
         self.optimizer0 = torch.optim.Adam(list(self.classifier.parameters())+list(self.attention.parameters())+list(self.dimReduction.parameters()), lr=args.lr,  weight_decay=1e-4)
         self.optimizer1 = torch.optim.Adam(self.UClassifier.parameters(), lr=args.lr,  weight_decay=1e-4) ## psuedo bag
         if layernum_head != 0:
-            self.optimizer2 = torch.optim.Adam(list(self.instance_classifier.parameters())+[self.representative_vector], lr=args.lr,  weight_decay=1e-4) ## psuedo bag
+            self.optimizer2 = torch.optim.Adam(list(self.instance_classifier.parameters())+[self.representative_vector], lr=args.lr,  weight_decay=1e-4)
+        else:
+            self.optimizer2 = torch.optim.Adam([self.representative_vector], lr=args.lr,  weight_decay=1e-4)
 
         self.scheduler0 = torch.optim.lr_scheduler.MultiStepLR(self.optimizer0, '[100]', gamma=0.2)
         self.scheduler1 = torch.optim.lr_scheduler.MultiStepLR(self.optimizer1, '[100]', gamma=0.2)
-        if num_head != 0:
+        if hasattr(self, 'optimizer2'):
             self.scheduler2 = torch.optim.lr_scheduler.MultiStepLR(self.optimizer2, '[100]', gamma=0.2)       
         
     def first_tier(self, x: torch.Tensor):
@@ -329,12 +334,12 @@ class Dtfd_tune(nn.Module):
             p = F.normalize(p, dim=1, eps=1e-8)
             loss -= self.weight_agree * torch.mean(p @ _representative_vector) # cosine loss
             
-            # print(f'cosine neg: {self.weight_agree * torch.mean(torch.pow(p - _representative_vector, 2).sum(dim=1, keepdim=False))}')
+            # print(f'cosine - neg: {self.weight_agree * torch.mean(p @ _representative_vector)}')
             # print(f'cosine location: {self.representative_vector[:5]}')
         elif target == 1:
             loss += self.weight_disagree * torch.sum((p_n @ p_n.T).fill_diagonal_(0))/(ls*(ls-1.0))
             # print(f'cosine - pos: {self.weight_disagree * torch.sum((p_n @ p_n.T).fill_diagonal_(0))/(ls*(ls-1.0))}')
-            # print(f'max variance: {torch.amax(_p.var(dim=0))}')
+            # print(f'max variance: {torch.amax(p_n.var(dim=0))}')
 
         return loss
         
@@ -427,7 +432,7 @@ class Dtfd_tune(nn.Module):
             loss += self.weight_disagree * torch.sum(torch.bmm(F.normalize(p_t, dim=2, eps=1e-8), F.normalize(p, dim=1, eps=1e-8)) * self.mask_diag)/(ls*hn*(hn-1.0))
             # loss += self.weight_disagree * torch.mean(F.relu(self.stddev_disagree - torch.sqrt(p_whiten.var(dim=2) + 0.00001))) # standard deviation
             # print(f'variance: {self.weight_disagree * torch.sum(torch.bmm(F.normalize(p_t, dim=2, eps=1e-8), F.normalize(p, dim=1, eps=1e-8)) * self.mask_diag)/(ls*hn*(hn-1.0))}')
-            # print(f'max variance: {torch.amax(p_whiten.var(dim=2))}')
+            # print(f'max variance: {torch.amax(F.normalize(p, dim=1, eps=1e-8).var(dim=2))}')
 
         return loss
     
