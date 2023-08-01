@@ -145,6 +145,7 @@ class Dtfd_tune(nn.Module):
         self.grad_clipping = 5
         self.device = args.device
         self.sigmoid = nn.Sigmoid()
+        self.scaler = torch.cuda.amp.GradScaler()
         self.instance_classifier = Classifier_instance(dim_latent, fs=fs, layernum_head=layernum_head, num_head=num_head)
         self.aux_loss = aux_loss
         self.num_head = num_head
@@ -155,7 +156,7 @@ class Dtfd_tune(nn.Module):
             assert layernum_head == 0
         
         if (aux_loss == 'loss_center') or (aux_loss == 'loss_var') or (aux_loss == 'loss_div_vc'):
-            self.representative_vector = nn.Parameter(torch.ones((1, fs)).cuda())
+            self.representative_vector = nn.Parameter(torch.ones((1, fs), requires_grad=True).cuda())
         elif (aux_loss == 'loss_contrastive') or (aux_loss=='loss_div_contrastive'):
             self.representative_vector = nn.Parameter(torch.ones((fs)).cuda())
         elif aux_loss == 'loss_center_vc':
@@ -173,19 +174,25 @@ class Dtfd_tune(nn.Module):
         self.weight_disagree = weight_disagree
         self.weight_cov = weight_cov
         self.stddev_disagree = stddev_disagree
-        
+        self.layernum_head = layernum_head
         # update
-        self.optimizer0 = torch.optim.Adam(list(self.classifier.parameters())+list(self.attention.parameters())+list(self.dimReduction.parameters()), lr=args.lr,  weight_decay=1e-4)
-        self.optimizer1 = torch.optim.Adam(self.UClassifier.parameters(), lr=args.lr,  weight_decay=1e-4) ## psuedo bag
-        if layernum_head != 0:
-            self.optimizer2 = torch.optim.Adam(list(self.instance_classifier.parameters())+[self.representative_vector], lr=args.lr,  weight_decay=1e-4)
-        else:
-            self.optimizer2 = torch.optim.Adam([self.representative_vector], lr=args.lr,  weight_decay=1e-4)
+        self.optimizer0 = torch.optim.Adam(list(self.classifier.parameters())+list(self.attention.parameters())+list(self.dimReduction.parameters())+list(self.UClassifier.parameters()), lr=args.lr,  weight_decay=1e-4)
+        self.optimizer1 = torch.optim.AdamW(self.instance_classifier.parameters(), lr=args.lr, weight_decay=1e-4)
+        self.optimizer2 = torch.optim.AdamW([self.representative_vector], lr=args.lr_center, weight_decay=0.0)
+        # self.optimizer_all = torch.optim.Adam(list(self.classifier.parameters())+list(self.attention.parameters())+list(self.dimReduction.parameters())
+        #                                      +list(self.UClassifier.parameters())+list(self.instance_classifier.parameters())+[self.representative_vector], lr=args.lr_center, weight_decay=0.0)
+        # if layernum_head != 0:
+        #     self.optimizer3 = torch.optim.SGD(params=self.instance_classifier.parameters(), lr=args.lr_aux, momentum=0.9, weight_decay=1e-3)
+        # else:
+        #     self.optimizer2 = torch.optim.Adam([self.representative_vector], lr=args.lr_aux,  weight_decay=1e-4)
+        #     self.optimizer3 = torch.optim.SGD(params=[self.representative_vector], lr=args.lr_aux, momentum=0.9, weight_decay=0)
 
         self.scheduler0 = torch.optim.lr_scheduler.MultiStepLR(self.optimizer0, '[100]', gamma=0.2)
         self.scheduler1 = torch.optim.lr_scheduler.MultiStepLR(self.optimizer1, '[100]', gamma=0.2)
-        if hasattr(self, 'optimizer2'):
-            self.scheduler2 = torch.optim.lr_scheduler.MultiStepLR(self.optimizer2, '[100]', gamma=0.2)       
+        self.scheduler2 = torch.optim.lr_scheduler.MultiStepLR(self.optimizer2, '[100]', gamma=0.2)  
+        # self.scheduler3 = torch.optim.lr_scheduler.MultiStepLR(self.optimizer3, '[100]', gamma=0.2)     
+        # if hasattr(self, 'optimizer3'):
+        #     self.scheduler3 = torch.optim.lr_scheduler.MultiStepLR(self.optimizer3, '[100]', gamma=0.2)       
         
     def first_tier(self, x: torch.Tensor):
         slide_sub_preds = []
@@ -520,32 +527,45 @@ class Dtfd_tune(nn.Module):
         """
         self.optimizer0.zero_grad()
         self.optimizer1.zero_grad()
+        self.optimizer2.zero_grad()
+        # self.optimizer3.zero_grad()
         with torch.cuda.amp.autocast():
             loss0, loss1, loss2 = self.calculate_objective(X, Y)
-        # print(f'{loss0.item()}, {loss1.item()}, {loss2.item()}')
-        loss0.backward(retain_graph=True)
-        if self.aux_loss != 'None':
-            loss1.backward(retain_graph=True)
-            loss2.backward()
-        else:
-            loss1.backward()
+        loss = loss0 + loss1 + loss2
+        self.scaler.scale(loss).backward()
+        
+        self.scaler.unscale_(self.optimizer0)
+        self.scaler.unscale_(self.optimizer1)
+        self.scaler.unscale_(self.optimizer2)
 
         torch.nn.utils.clip_grad_norm_(self.dimReduction.parameters(), self.grad_clipping)
         torch.nn.utils.clip_grad_norm_(self.attention.parameters(), self.grad_clipping)
         torch.nn.utils.clip_grad_norm_(self.classifier.parameters(), self.grad_clipping)
         torch.nn.utils.clip_grad_norm_(self.UClassifier.parameters(), self.grad_clipping)
         torch.nn.utils.clip_grad_norm_(self.instance_classifier.parameters(), self.grad_clipping)
-        torch.nn.utils.clip_grad_norm_(self.representative_vector, self.grad_clipping)
+        torch.nn.utils.clip_grad_norm_([self.representative_vector], self.grad_clipping)
+        
+        self.scaler.step(self.optimizer0)
+        self.scaler.step(self.optimizer1)
+        self.scaler.step(self.optimizer2)
+        self.scaler.update()   
 
-        self.optimizer0.step()
-        self.optimizer1.step()
-        if self.num_head != 0:
-            self.optimizer2.step()
+        # self.optimizer0.step()
+        # self.optimizer1.step()
+        # self.optimizer2.step()
+        # self.optimizer3.step()
+        
+        # print(f'new param: {self.representative_vector.cpu().detach().numpy()[0,:4].tolist()}, {self.instance_classifier.fc[0][0].weight.cpu().detach().numpy()[0,:4].tolist()}')
+        # print(f'old param: {self.classifier.fc.weight.cpu().detach().numpy()[0,:4].tolist()}, {self.UClassifier.classifier.fc.weight.cpu().detach().numpy()[0,:4].tolist()}')
+        # if self.layernum_head != 0:
+        # self.optimizer3.step()
 
         self.scheduler0.step()
         self.scheduler1.step()
-        if self.num_head != 0:
-            self.scheduler2.step()
+        self.scheduler2.step()
+        # self.scheduler3.step()
+        # if self.layernum_head != 0:
+        # self.scheduler3.step()
 
 
     def infer(self, x: torch.Tensor):
