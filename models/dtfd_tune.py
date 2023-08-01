@@ -545,6 +545,10 @@ class Dtfd_tune(nn.Module):
         torch.nn.utils.clip_grad_norm_(self.UClassifier.parameters(), self.grad_clipping)
         torch.nn.utils.clip_grad_norm_(self.instance_classifier.parameters(), self.grad_clipping)
         torch.nn.utils.clip_grad_norm_(self.representative_vector, self.grad_clipping)
+
+        print(f'optimizer 0 nan: {torch.isnan(self.optimizer0.param_groups[0]["params"][0].grad).sum()}')
+        print(f'optimizer 1 nan: {torch.isnan(self.optimizer1.param_groups[0]["params"][0].grad).sum()}')
+        print(f'optimizer 2 nan: {torch.isnan(self.optimizer2.param_groups[0]["params"][0].grad).sum()}')
         
         self.scaler.step(self.optimizer0)
         self.scaler.step(self.optimizer1)
