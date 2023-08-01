@@ -1,6 +1,6 @@
 gpu=0
 dataset=CAMELYON16
-data_root=/mnt/aitrics_ext/ext01/shared/camelyon16_eosin_224_16_pkl_0524/swav_res50
+data_root=/mnt/aitrics_ext/ext02/camelyon16_eosin_224_16_pkl_0524/swav_res50
 lr_downstream=0.003
 
 milmodel=Dtfd_noscale

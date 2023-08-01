@@ -178,7 +178,8 @@ class Dtfd_tune(nn.Module):
         # update
         self.optimizer0 = torch.optim.Adam(list(self.classifier.parameters())+list(self.attention.parameters())+list(self.dimReduction.parameters())+list(self.UClassifier.parameters()), lr=args.lr,  weight_decay=1e-4)
         self.optimizer1 = torch.optim.AdamW(self.instance_classifier.parameters(), lr=args.lr, weight_decay=1e-4)
-        self.optimizer2 = torch.optim.AdamW([self.representative_vector], lr=args.lr_center, weight_decay=0.0)
+        self.optimizer2 = torch.optim.Adam([self.representative_vector], lr=args.lr_center, weight_decay=0.0)
+        print(f'args.lr_center: {args.lr_center}')
         # self.optimizer_all = torch.optim.Adam(list(self.classifier.parameters())+list(self.attention.parameters())+list(self.dimReduction.parameters())
         #                                      +list(self.UClassifier.parameters())+list(self.instance_classifier.parameters())+[self.representative_vector], lr=args.lr_center, weight_decay=0.0)
         # if layernum_head != 0:
@@ -531,7 +532,7 @@ class Dtfd_tune(nn.Module):
         # self.optimizer3.zero_grad()
         with torch.cuda.amp.autocast():
             loss0, loss1, loss2 = self.calculate_objective(X, Y)
-        loss = loss0 + loss1 + loss2
+            loss = loss0 + loss1 + loss2
         self.scaler.scale(loss).backward()
         
         self.scaler.unscale_(self.optimizer0)
@@ -543,12 +544,12 @@ class Dtfd_tune(nn.Module):
         torch.nn.utils.clip_grad_norm_(self.classifier.parameters(), self.grad_clipping)
         torch.nn.utils.clip_grad_norm_(self.UClassifier.parameters(), self.grad_clipping)
         torch.nn.utils.clip_grad_norm_(self.instance_classifier.parameters(), self.grad_clipping)
-        torch.nn.utils.clip_grad_norm_([self.representative_vector], self.grad_clipping)
+        torch.nn.utils.clip_grad_norm_(self.representative_vector, self.grad_clipping)
         
         self.scaler.step(self.optimizer0)
         self.scaler.step(self.optimizer1)
         self.scaler.step(self.optimizer2)
-        self.scaler.update()   
+        self.scaler.update()
 
         # self.optimizer0.step()
         # self.optimizer1.step()
