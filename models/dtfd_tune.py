@@ -180,7 +180,7 @@ class Dtfd_tune(nn.Module):
         if args.optimizer == "adamw":
             self.optimizer1 = torch.optim.AdamW(params=[self.representative_vector], lr=args.lr_center, weight_decay=0.0)
         elif args.optimizer == "sgd":
-            self.optimizer1 = torch.optim.SGD(params=[self.representative_vector], lr=args.lr_center, momentum=0.9, weight_decay=0.0)
+            self.optimizer1 = torch.optim.SGD(params=[self.representative_vector], lr=args.lr_center, weight_decay=0.0)
         elif args.optimizer == "adam":
             self.optimizer1 = torch.optim.Adam(params=[self.representative_vector], lr=args.lr_center, weight_decay=0.0)
         
@@ -494,13 +494,13 @@ class Dtfd_tune(nn.Module):
         logit_bag = self.UClassifier(feat_pseudo_bag)
         logit_instances = self.instance_classifier(feat_instances)
         # logit_bag: K(=1) x cls
-        return logit_bag, logit_pseudo_bag, logit_instances 
+        return logit_bag, logit_instances, logit_pseudo_bag 
 
     def calculate_objective(self, X, Y):
         # X => 1 x #instance x self.dim_in, Y => #bags x #classes
         # logit_bag: K(=1) x cls
         # logit_pseudo_bag: numGroup x cls
-        logit_bag, logit_pseudo_bag, logit_instances = self.forward(X) 
+        logit_bag, logit_instances, logit_pseudo_bag = self.forward(X)
         # slide_sub_labels
         slide_sub_labels = torch.ones((self.numGroup,1)).to(self.device)*Y
         # loss0 = self.criterion(logit_pseudo_bag, slide_sub_labels).mean()
