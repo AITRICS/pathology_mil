@@ -141,10 +141,10 @@ class MilBase(nn.Module):
         prob_bag: #bags x #class
         prob_instance: #bags x #instances x #class
         """
-        output = self.forward(x)
+        logit_dict = self.forward(x)
 
-        prob_bag = self.sigmoid(output['logit_bag'])
-        prob_instance = self.sigmoid(output['logit_instance']) if 'logit_instance' in output.keys() else None
+        prob_bag = self.sigmoid(logit_dict['logit_bag'])
+        prob_instance = self.sigmoid(logit_dict['logit_instance']) if 'logit_instance' in logit_dict.keys() else None
         return prob_bag, prob_instance
     
     def calculate_objective(self, X, Y):
@@ -161,12 +161,12 @@ class MilBase(nn.Module):
         loss: scalar
         """
 
-        output = self.forward(X)
-        loss_bag = self.criterion_bag(output)
+        logit_dict = self.forward(X)
+        loss_bag = self.criterion_bag(logit_dict['logit_bag'])
         if self.args.train_instance == 'None':
             return loss_bag
         else:
-            loss_instance = getattr(self, self.args.train_instance)(output)
+            loss_instance = getattr(self, self.args.train_instance)(logit_dict['logit_instance'])
             return loss_bag + loss_instance
 
     def update(self, X, Y):
