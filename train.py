@@ -58,7 +58,7 @@ parser.add_argument('--stddev-disagree', default=1.0, type=float, help='std dev 
 # parser.add_argument('--pretrain-type', default='ImageNet_Res50_im', help='weight folder')
 # parser.add_argument('--pretrain-type', default='simclr_lr1', help='weight folder')
 parser.add_argument('--epochs', default=200, type=int, metavar='N', help='number of total epochs to run')
-# parser.add_argument('--optimizer', default='sgd', choices=['sgd', 'adam', 'adamw'], type=str, help='optimizer')
+parser.add_argument('--optimizer', default='sgd', choices=['sgd', 'adam', 'adamw'], type=str, help='optimizer')
 parser.add_argument('--lr', default=0.003, type=float, metavar='LR', help='initial learning rate', dest='lr')
 # parser.add_argument('--lr-aux', default=0.001, type=float, help='initial learning rate')
 parser.add_argument('--lr-center', default=0.0001, type=float, help='initial learning rate')
@@ -211,8 +211,8 @@ if __name__ == '__main__':
         args.balance_param = 0.0
     args.pretrain_type = args.data_root.split("/")[-2:]
     # txt_name = f'{args.dataset}_{args.pretrain_type}_downstreamLR_{args.lr}_optimizer_{args.optimizer}_epoch{args.epochs}_wd{args.weight_decay}'    
-    txt_name = f'{datetime.today().strftime("%m%d")}_{args.dataset}_{args.mil_model}_aux_loss{args.aux_loss}' +\
-    f'_num_head{args.num_head}_layernum_head{args.layernum_head}' +\
+    txt_name = f'saved_models/{datetime.today().strftime("%m%d")}_{args.dataset}_{args.mil_model}_aux_loss{args.aux_loss}' +\
+    f'_num_head{args.num_head}_layernum_head{args.layernum_head}_lr_center{args.lr_center}' +\
     f'_weight_agree{args.weight_agree}_weight_disagree{args.weight_disagree}_weight_cov{args.weight_cov}_stddev_disagree{args.stddev_disagree}'
 
     acc_fold_tr = []

@@ -145,7 +145,7 @@ class Dtfd_tune(nn.Module):
         self.grad_clipping = 5
         self.device = args.device
         self.sigmoid = nn.Sigmoid()
-        self.scaler = torch.cuda.amp.GradScaler()
+        # self.scaler = torch.cuda.amp.GradScaler()
         self.instance_classifier = Classifier_instance(dim_latent, fs=fs, layernum_head=layernum_head, num_head=num_head)
         self.aux_loss = aux_loss
         self.num_head = num_head
@@ -156,14 +156,14 @@ class Dtfd_tune(nn.Module):
             assert layernum_head == 0
         
         if (aux_loss == 'loss_center') or (aux_loss == 'loss_var') or (aux_loss == 'loss_div_vc'):
-            self.representative_vector = nn.Parameter(torch.ones((1, fs), requires_grad=True).cuda())
+            self.representative_vector = nn.Parameter(torch.zeros((1, fs), requires_grad=True).cuda())
         elif (aux_loss == 'loss_contrastive') or (aux_loss=='loss_div_contrastive'):
-            self.representative_vector = nn.Parameter(torch.ones((fs)).cuda())
+            self.representative_vector = nn.Parameter(torch.zeros(fs, requires_grad=True).cuda())
         elif aux_loss == 'loss_center_vc':
-            self.representative_vector = nn.Parameter(torch.ones((1, fs, 1)).cuda())
+            self.representative_vector = nn.Parameter(torch.zeros((1, fs, 1)).cuda())
             assert num_head >=3
         elif aux_loss == 'loss_cosine_vc':
-            self.representative_vector = nn.Parameter(torch.ones((fs)).cuda())
+            self.representative_vector = nn.Parameter(torch.zeros((fs)).cuda())
             assert num_head >=3
 
         if aux_loss=='loss_div_contrastive':
@@ -176,24 +176,18 @@ class Dtfd_tune(nn.Module):
         self.stddev_disagree = stddev_disagree
         self.layernum_head = layernum_head
         # update
-        self.optimizer0 = torch.optim.Adam(list(self.classifier.parameters())+list(self.attention.parameters())+list(self.dimReduction.parameters())+list(self.UClassifier.parameters()), lr=args.lr,  weight_decay=1e-4)
-        self.optimizer1 = torch.optim.AdamW(self.instance_classifier.parameters(), lr=args.lr, weight_decay=1e-4)
-        self.optimizer2 = torch.optim.Adam([self.representative_vector], lr=args.lr_center, weight_decay=0.0)
+        self.optimizer0 = torch.optim.Adam(list(self.classifier.parameters())+list(self.attention.parameters())+list(self.dimReduction.parameters())+list(self.UClassifier.parameters())+list(self.instance_classifier.parameters()), lr=args.lr,  weight_decay=1e-4)
+        if args.optimizer == "adamw":
+            self.optimizer1 = torch.optim.AdamW(params=[self.representative_vector], lr=args.lr_center, weight_decay=0.0)
+        elif args.optimizer == "sgd":
+            self.optimizer1 = torch.optim.SGD(params=[self.representative_vector], lr=args.lr_center, momentum=0.9, weight_decay=0.0)
+        elif args.optimizer == "adam":
+            self.optimizer1 = torch.optim.Adam(params=[self.representative_vector], lr=args.lr_center, weight_decay=0.0)
+        
         print(f'args.lr_center: {args.lr_center}')
-        # self.optimizer_all = torch.optim.Adam(list(self.classifier.parameters())+list(self.attention.parameters())+list(self.dimReduction.parameters())
-        #                                      +list(self.UClassifier.parameters())+list(self.instance_classifier.parameters())+[self.representative_vector], lr=args.lr_center, weight_decay=0.0)
-        # if layernum_head != 0:
-        #     self.optimizer3 = torch.optim.SGD(params=self.instance_classifier.parameters(), lr=args.lr_aux, momentum=0.9, weight_decay=1e-3)
-        # else:
-        #     self.optimizer2 = torch.optim.Adam([self.representative_vector], lr=args.lr_aux,  weight_decay=1e-4)
-        #     self.optimizer3 = torch.optim.SGD(params=[self.representative_vector], lr=args.lr_aux, momentum=0.9, weight_decay=0)
 
         self.scheduler0 = torch.optim.lr_scheduler.MultiStepLR(self.optimizer0, '[100]', gamma=0.2)
         self.scheduler1 = torch.optim.lr_scheduler.MultiStepLR(self.optimizer1, '[100]', gamma=0.2)
-        self.scheduler2 = torch.optim.lr_scheduler.MultiStepLR(self.optimizer2, '[100]', gamma=0.2)  
-        # self.scheduler3 = torch.optim.lr_scheduler.MultiStepLR(self.optimizer3, '[100]', gamma=0.2)     
-        # if hasattr(self, 'optimizer3'):
-        #     self.scheduler3 = torch.optim.lr_scheduler.MultiStepLR(self.optimizer3, '[100]', gamma=0.2)       
         
     def first_tier(self, x: torch.Tensor):
         slide_sub_preds = []
@@ -302,6 +296,7 @@ class Dtfd_tune(nn.Module):
         ls, fs = p.shape
         _p = p - p.mean(dim=0)
         # loss_variance = torch.mean(F.relu(1.0 - torch.sqrt(p.var(dim=0) + 0.00001)))
+        _p = F.normalize(_p, dim=1, eps=1e-8)
         cov = (_p.T @ _p) / (ls - 1.0)
         loss = self.weight_cov*(self.off_diagonal(cov).pow_(2).sum().div(fs)) # covariance loss
 
@@ -326,11 +321,11 @@ class Dtfd_tune(nn.Module):
  
         p: Length_sequence x fs
         """
-
         ls, fs = p.shape
         p_n = F.normalize(p, dim=1, eps=1e-8)
         _p = p - p.mean(dim=0)
         # loss_variance = torch.mean(F.relu(1.0 - torch.sqrt(p.var(dim=0) + 0.00001)))
+        _p = F.normalize(_p, dim=1, eps=1e-8)
         cov = (_p.T @ _p) / (ls - 1.0)
         loss = self.weight_cov*(self.off_diagonal(cov).pow_(2).sum().div(fs)) # covariance loss
         
@@ -341,7 +336,6 @@ class Dtfd_tune(nn.Module):
             _representative_vector = F.normalize(self.representative_vector, dim=0, eps=1e-8) # _representative_vector : fs
             p = F.normalize(p, dim=1, eps=1e-8)
             loss -= self.weight_agree * torch.mean(p @ _representative_vector) # cosine loss
-            
             # print(f'cosine - neg: {self.weight_agree * torch.mean(p @ _representative_vector)}')
             # print(f'cosine location: {self.representative_vector[:5]}')
         elif target == 1:
@@ -351,7 +345,6 @@ class Dtfd_tune(nn.Module):
 
         return loss
         
-    
     def loss_center_vc(self, p: torch.Tensor, target=0):
         """
         1) cosine(negative)/variance(positive) + 2) Covariance
@@ -387,12 +380,14 @@ class Dtfd_tune(nn.Module):
  
         p: Length_sequence x fs x Head_num
         """
-
+        target=int(target)
+        
         ls, fs, hn = p.shape
         p_whiten_head = p - p.mean(dim=2, keepdim=True) # Length_sequence x fs x Head_num
         p_whiten = p - p.mean(dim=(0,2), keepdim=True) # Length_sequence x fs x Head_num
         # p_whiten_merged = torch.transpose(p_whiten, 1, 2).view(ls*hn, fs) # (Length_sequence x Head_num) x fs
         p_whiten_merged = rearrange(torch.transpose(p_whiten, 1, 2).contiguous(), "l h f -> (l h) f") # p_whiten_merged: (Length_sequence x Head_num) x fs
+        p_whiten_merged = F.normalize(p_whiten_merged, dim=1, eps=1e-8)
         
         cov = (p_whiten_merged.T @ p_whiten_merged) / ((ls*hn) - 1.0)
         loss = self.weight_cov*(self.off_diagonal(cov).pow_(2).sum().div(fs)) # covariance loss
@@ -408,7 +403,6 @@ class Dtfd_tune(nn.Module):
             loss += self.weight_disagree * torch.mean(F.relu(self.stddev_disagree - torch.sqrt(p_whiten_head.var(dim=2) + 0.00001))) # standard deviation
             # print(f'variance: {self.weight_disagree * torch.mean(F.relu(self.stddev_disagree - torch.sqrt(p_whiten_head.var(dim=2) + 0.00001)))}')
             # print(f'max variance: {torch.amax(p_whiten_head.var(dim=2))}')
-        
         # print(f'weight: {[f.weight[0,0].item() for f in self.instance_classifier.fc]}')
         return loss
 
@@ -418,13 +412,14 @@ class Dtfd_tune(nn.Module):
  
         p: Length_sequence x fs x Head_num
         """
-
+        target=int(target)
+        
         ls, fs, hn = p.shape
         p_t = torch.transpose(p, 1, 2) # Length_sequence x Head_num x fs
         p_whiten = p - p.mean(dim=(0,2), keepdim=True) # Length_sequence x fs x Head_num
         # p_whiten_merged = torch.transpose(p_whiten, 1, 2).view(ls*hn, fs) # (Length_sequence x Head_num) x fs
         p_whiten_merged = rearrange(torch.transpose(p_whiten, 1, 2).contiguous(), "l h f -> (l h) f") # p_whiten_merged: (Length_sequence x Head_num) x fs
-        
+        p_whiten_merged = F.normalize(p_whiten_merged, dim=1, eps=1e-8)
         cov = (p_whiten_merged.T @ p_whiten_merged) / ((ls*hn) - 1.0)
         loss = self.weight_cov*(self.off_diagonal(cov).pow_(2).sum().div(fs)) # covariance loss
         # print(f'==================================')
@@ -443,8 +438,6 @@ class Dtfd_tune(nn.Module):
             # print(f'max variance: {torch.amax(F.normalize(p, dim=1, eps=1e-8).var(dim=2))}')
 
         return loss
-    
-
 
     def loss_cosine_vc(self, p: torch.Tensor, target=0):
         """
@@ -476,7 +469,6 @@ class Dtfd_tune(nn.Module):
 
         return loss
         
-
     def loss_vc(self, p: torch.Tensor, target=None):
         """
         Variance + Covariance
@@ -528,16 +520,15 @@ class Dtfd_tune(nn.Module):
         """
         self.optimizer0.zero_grad()
         self.optimizer1.zero_grad()
-        self.optimizer2.zero_grad()
         # self.optimizer3.zero_grad()
-        with torch.cuda.amp.autocast():
-            loss0, loss1, loss2 = self.calculate_objective(X, Y)
-            loss = loss0 + loss1 + loss2
-        self.scaler.scale(loss).backward()
+        # with torch.cuda.amp.autocast():
+        loss0, loss1, loss2 = self.calculate_objective(X, Y)
+        loss = loss0 + loss1 + loss2
+        loss.backward()
+        # self.scaler.scale(loss).backward()
         
-        self.scaler.unscale_(self.optimizer0)
-        self.scaler.unscale_(self.optimizer1)
-        self.scaler.unscale_(self.optimizer2)
+        # self.scaler.unscale_(self.optimizer0)
+        # self.scaler.unscale_(self.optimizer1)
 
         torch.nn.utils.clip_grad_norm_(self.dimReduction.parameters(), self.grad_clipping)
         torch.nn.utils.clip_grad_norm_(self.attention.parameters(), self.grad_clipping)
@@ -546,32 +537,42 @@ class Dtfd_tune(nn.Module):
         torch.nn.utils.clip_grad_norm_(self.instance_classifier.parameters(), self.grad_clipping)
         torch.nn.utils.clip_grad_norm_(self.representative_vector, self.grad_clipping)
 
-        print(f'optimizer 0 nan: {torch.isnan(self.optimizer0.param_groups[0]["params"][0].grad).sum()}')
-        print(f'optimizer 1 nan: {torch.isnan(self.optimizer1.param_groups[0]["params"][0].grad).sum()}')
-        print(f'optimizer 2 nan: {torch.isnan(self.optimizer2.param_groups[0]["params"][0].grad).sum()}')
+        # print(f'optimizer 0 nan: {torch.isnan(self.optimizer0.param_groups[0]["params"][0].grad).sum()}')
+        # print(f'optimizer 1 nan: {torch.isnan(self.optimizer1.param_groups[0]["params"][0].grad).sum()}')
+        # print(f'optimizer 2 nan: {torch.isnan(self.optimizer2.param_groups[0]["params"][0].grad).sum()}')
+        # print("1: ", self.representative_vector.cpu().detach().numpy().shape)
+        # print("2: ", self.instance_classifier.fc.weight.cpu().detach().numpy().shape)
+        # print("3: ", self.classifier.fc.weight.cpu().detach().numpy().shape)
+        # print("4: ", self.UClassifier.classifier.fc.weight.cpu().detach().numpy().shape)
+        # print(f'1 new param: {self.representative_vector.cpu().detach().numpy()[:4].tolist()}, {self.instance_classifier.fc.weight.cpu().detach().numpy()[0,:4].tolist()}')
+        # print(f'1 old param: {self.classifier.fc.weight.cpu().detach().numpy()[0,:4].tolist()}, {self.UClassifier.classifier.fc.weight.cpu().detach().numpy()[0,:4].tolist()}')
         
-        self.scaler.step(self.optimizer0)
-        self.scaler.step(self.optimizer1)
-        self.scaler.step(self.optimizer2)
-        self.scaler.update()
+        # self.scaler.step(self.optimizer0)
+        # self.scaler.step(self.optimizer1)
+        # self.scaler.update()
+        self.optimizer0.step()        
+        self.optimizer1.step()        
 
         # self.optimizer0.step()
         # self.optimizer1.step()
         # self.optimizer2.step()
         # self.optimizer3.step()
         
-        # print(f'new param: {self.representative_vector.cpu().detach().numpy()[0,:4].tolist()}, {self.instance_classifier.fc[0][0].weight.cpu().detach().numpy()[0,:4].tolist()}')
-        # print(f'old param: {self.classifier.fc.weight.cpu().detach().numpy()[0,:4].tolist()}, {self.UClassifier.classifier.fc.weight.cpu().detach().numpy()[0,:4].tolist()}')
+        
         # if self.layernum_head != 0:
         # self.optimizer3.step()
 
         self.scheduler0.step()
         self.scheduler1.step()
-        self.scheduler2.step()
+        
+        # print(f'2 new param: {self.representative_vector.cpu().detach().numpy()[:4].tolist()}, {self.instance_classifier.fc.weight.cpu().detach().numpy()[0,:4].tolist()}')
+        # print(f'2 old param: {self.classifier.fc.weight.cpu().detach().numpy()[0,:4].tolist()}, {self.UClassifier.classifier.fc.weight.cpu().detach().numpy()[0,:4].tolist()}')
+        # print(" ")
+        # print(" ")
+        
         # self.scheduler3.step()
         # if self.layernum_head != 0:
         # self.scheduler3.step()
-
 
     def infer(self, x: torch.Tensor):
         """
