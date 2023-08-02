@@ -60,7 +60,7 @@ class MilBase(nn.Module):
         self.weight_cov = weight_cov
         self.auxloss_weight = auxloss_weight
         
-        if args.mil_model == 'dsmil':     
+        if args.mil_model == 'Dsmil':     
             channels= dim_in
         else :
             channels = dim_latent
