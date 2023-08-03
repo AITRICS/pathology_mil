@@ -4,7 +4,7 @@ import torch.nn as nn
 import random
 import numpy as np
 import torch.nn.functional as F
-from .mil import Classifier_instance
+from .milbase import Classifier_instance
 from einops import rearrange
 from itertools import chain
 
@@ -146,7 +146,7 @@ class Dtfd_tune(nn.Module):
         self.device = args.device
         self.sigmoid = nn.Sigmoid()
         # self.scaler = torch.cuda.amp.GradScaler()
-        self.instance_classifier = Classifier_instance(dim_latent, fs=fs, layernum_head=layernum_head, num_head=num_head)
+        self.instance_classifier = Classifier_instance(dim_in=dim_latent, dim_out=fs, layer_depth=layernum_head, num_head=num_head)
         self.aux_loss = aux_loss
         self.num_head = num_head
         
@@ -232,6 +232,15 @@ class Dtfd_tune(nn.Module):
         instance_pseudo_feat = torch.cat(instance_pseudo_feat, dim=0) ### num_patch x fs
         
         return slide_pseudo_feat, slide_sub_preds, instance_pseudo_feat
+    
+    def forward(self, x: torch.Tensor):
+
+        feat_pseudo_bag, logit_pseudo_bag, feat_instances = self.first_tier(x) ### numGroup x fs  ,   numGroup x cls
+
+        logit_bag = self.UClassifier(feat_pseudo_bag)
+        logit_instances = self.instance_classifier(feat_instances)
+        # logit_bag: K(=1) x cls
+        return logit_bag, logit_instances, logit_pseudo_bag 
     
     def loss_dbat(self, p: torch.Tensor, target=0):
         """
@@ -487,14 +496,7 @@ class Dtfd_tune(nn.Module):
         assert n == m
         return x.flatten()[:-1].view(n - 1, n + 1)[:, 1:].flatten()
            
-    def forward(self, x: torch.Tensor):
 
-        feat_pseudo_bag, logit_pseudo_bag, feat_instances = self.first_tier(x) ### numGroup x fs      ,      numGroup x cls
-
-        logit_bag = self.UClassifier(feat_pseudo_bag)
-        logit_instances = self.instance_classifier(feat_instances)
-        # logit_bag: K(=1) x cls
-        return logit_bag, logit_instances, logit_pseudo_bag 
 
     def calculate_objective(self, X, Y):
         # X => 1 x #instance x self.dim_in, Y => #bags x #classes

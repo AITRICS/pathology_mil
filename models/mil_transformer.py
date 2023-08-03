@@ -1,7 +1,10 @@
+import torch
+import torch.nn as nn
+from models.transformer.encoder import TransformerEncoder
+from .milbase import MilBase
 # INPUT: #bags x #instances x #dims
 # OUTPUT: #bags x #classes
 
-from models.transformer.encoder import TransformerEncoder
 
 class MilTransformer(MilBase):
 

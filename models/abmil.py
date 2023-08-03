@@ -4,14 +4,16 @@ import torch.nn.functional as F
 from typing import List
 import torch.optim as optim
 from utils import CosineAnnealingWarmUpSingle, CosineAnnealingWarmUpRestarts
-from .mil import MilBase
+from .milbase import MilBase
 
 class Attention(MilBase):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.L = self.dim_latent
+    def __init__(self, args, ma_dim_in):
+        super().__init__(args=args, ma_dim_in=ma_dim_in, ic_dim_in=500)
+        # self.L = self.dim_latent
+        self.L = 500
         self.D = 128
-        self.K = self.dim_out
+        # self.K = self.dim_out
+        self.K = 1
 
         # self.feature_extractor_part1 = nn.Sequential(
         #     nn.Conv2d(1, 20, kernel_size=5),
@@ -23,7 +25,7 @@ class Attention(MilBase):
         # )
 
         self.encoder = nn.Sequential(
-            nn.Linear(self.dim_in, self.L),
+            nn.Linear(self.ma_dim_in, self.L),
             nn.ReLU(),
         )
 
@@ -34,16 +36,12 @@ class Attention(MilBase):
         )
 
         self.classifier = nn.Sequential(
-            nn.Linear(self.L, 1)
+            nn.Linear(self.L, args.num_classes)
         )
         
-        if kwargs['optimizer'] is not None:
-            self.optimizer = kwargs['optimizer']
-        else:
-            self.optimizer = optim.Adam(self.parameters(), lr=kwargs['args'].lr, betas=(0.9, 0.999), weight_decay=10e-5)
+        self.optimizer['mil_model'] = optim.Adam(list(self.encoder.parameters())+list(self.attention.parameters())+list(self.classifier.parameters())+
+                                    list(self.instance_classifier.parameters()), lr=args.lr, betas=(0.9, 0.999), weight_decay=10e-5)
 
-        # self.set_optimizer()
-        
 
     def forward(self, x):
         # INPUT: #bags x #instances x #dims
@@ -52,11 +50,11 @@ class Attention(MilBase):
 
         # H = self.feature_extractor_part1(x)
         # H = H.view(-1, 50 * 4 * 4)
-        H = self.encoder(x)  # BxNxL
+        H = self.encoder(x)  # #bags x #instances x 500
 # H: seq(=-1) x self.L,    seq=K
-        A = self.attention(H)  # BxNxK
+        A = self.attention(H)  # BxNx1
         # A = self.attention(x)  
-        A = torch.transpose(A, 2, 1)  # BxKxN
+        A = torch.transpose(A, 2, 1)  # Bx1xN
         A = F.softmax(A, dim=2)  # softmax over N
 
         # M = torch.mm(A, H)  # KxL
@@ -67,9 +65,8 @@ class Attention(MilBase):
         logit_bag = self.classifier(M).squeeze(2) # BxK        
         # Y_hat = torch.sign(F.relu(Y_logit)).float()
 
-        # return Y_prob, Y_hat, A
-        # return F.sigmoid(Y_logit), Y_logit, Y_hat
-        return logit_bag, None
+        logit_instances = self.instance_classifier(H.squeeze(0))
+        return {'bag': logit_bag, 'instance': logit_instances}
 
     # # AUXILIARY METHODS
     # def calculate_classification_error(self, X, Y):
@@ -79,25 +76,27 @@ class Attention(MilBase):
 
     #     return error, Y_hat
 
-    def calculate_objective(self, X, Y):
-        # Y = Y.float()
-        # Y_prob, _, A = self.forward(X)
-        logit_bag, _ = self.forward(X)
-        loss = self.criterion(logit_bag, Y)
-        # Y_prob = F.sigmoid(logit_bag)
-        # Y_prob = torch.clamp(Y_prob, min=1e-5, max=1. - 1e-5)
-        # neg_log_likelihood = -1. * (Y * torch.log(Y_prob) + (1. - Y) * torch.log(1. - Y_prob))  # negative log bernoulli
+    # def calculate_objective(self, X, Y):
+    #     # Y = Y.float()
+    #     # Y_prob, _, A = self.forward(X)
+    #     logit_bag, _ = self.forward(X)
+    #     loss = self.criterion(logit_bag, Y)
+    #     # Y_prob = F.sigmoid(logit_bag)
+    #     # Y_prob = torch.clamp(Y_prob, min=1e-5, max=1. - 1e-5)
+    #     # neg_log_likelihood = -1. * (Y * torch.log(Y_prob) + (1. - Y) * torch.log(1. - Y_prob))  # negative log bernoulli
 
-        # return neg_log_likelihood, A
-        return loss
+    #     # return neg_log_likelihood, A
+    #     return loss
 
 
 class GatedAttention(MilBase):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.L = self.dim_latent
+    def __init__(self, args, ma_dim_in):
+        super().__init__(args=args, ma_dim_in=ma_dim_in, ic_dim_in=500)
+        # self.L = self.dim_latent
+        self.L = 500
         self.D = 128
-        self.K = self.dim_out
+        # self.K = self.dim_out
+        self.K = 1
 
         # self.feature_extractor_part1 = nn.Sequential(
         #     nn.Conv2d(1, 20, kernel_size=5),
@@ -127,16 +126,13 @@ class GatedAttention(MilBase):
 
         self.classifier = nn.Sequential(
             # nn.Linear(self.L*self.K, 1),
-            nn.Linear(self.L, 1),
+            nn.Linear(self.L, args.num_classes),
             # nn.Sigmoid()
         )
-        
-        if kwargs['optimizer'] is not None:
-            self.optimizer = kwargs['optimizer']
-        else:
-            self.optimizer = optim.Adam(self.parameters(), lr=kwargs['args'].lr, betas=(0.9, 0.999), weight_decay=10e-5)
-
-        # self.set_optimizer()        
+    
+        self.optimizer['mil_model'] = optim.Adam(list(self.encoder.parameters())+list(self.attention.parameters())+list(self.classifier.parameters())+
+                                    list(self.instance_classifier.parameters()), lr=kwargs['args'].lr, betas=(0.9, 0.999), weight_decay=10e-5)
+     
         
     def forward(self, x):
         # INPUT: #bags x #instances x #dims
@@ -161,8 +157,9 @@ class GatedAttention(MilBase):
         logit_bag = self.classifier(M).squeeze(2) # BxK
         # Y_hat = torch.sign(F.relu(Y_logit)).float()
 
-        # return F.sigmoid(Y_logit), Y_logit, Y_hat
-        return logit_bag, None
+        
+        logit_instances = self.instance_classifier(H.squeeze(0))
+        return {'bag': logit_bag, 'instance': logit_instances}
 
     # # AUXILIARY METHODS
     # def calculate_classification_error(self, X, Y):
@@ -172,13 +169,13 @@ class GatedAttention(MilBase):
 
     #     return error, Y_hat
 
-    def calculate_objective(self, X, Y):
-        Y = Y.float()
-        logit_bag, _ = self.forward(X)
-        loss = self.criterion(logit_bag, Y)
-        return loss
-        # Y_prob = F.sigmoid(logit_bag)
-        # Y_prob = torch.clamp(Y_prob, min=1e-5, max=1. - 1e-5)
-        # neg_log_likelihood = -1. * (Y * torch.log(Y_prob) + (1. - Y) * torch.log(1. - Y_prob))  # negative log bernoulli
+    # def calculate_objective(self, X, Y):
+    #     Y = Y.float()
+    #     logit_bag, _ = self.forward(X)
+    #     loss = self.criterion(logit_bag, Y)
+    #     return loss
+    #     # Y_prob = F.sigmoid(logit_bag)
+    #     # Y_prob = torch.clamp(Y_prob, min=1e-5, max=1. - 1e-5)
+    #     # neg_log_likelihood = -1. * (Y * torch.log(Y_prob) + (1. - Y) * torch.log(1. - Y_prob))  # negative log bernoulli
 
-        # return neg_log_likelihood
+    #     # return neg_log_likelihood

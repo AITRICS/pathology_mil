@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from .mil import milmax
+from .meanmax import milmax
 
 class rnn_single(nn.Module):
     

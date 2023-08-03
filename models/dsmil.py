@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
-from .mil import MilBase
+from .milbase import MilBase
     
 class FCLayer(nn.Module):
     def __init__(self, in_size, out_size=1):
@@ -61,7 +61,7 @@ class BClassifier(nn.Module):
         B = B.view(1, B.shape[0], B.shape[1]) # 1 x C x V
         C = self.fcc(B) # 1 x C x 1
         C = C.view(1, -1) # 1 x C
-        return C, A, B 
+        return C, A, B
     
 class MILNet(nn.Module):
     def __init__(self, i_classifier, b_classifier):

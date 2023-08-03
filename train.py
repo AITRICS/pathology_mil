@@ -36,41 +36,28 @@ import math
 #     and callable(models.__dict__[name]))
 # /nfs/strange/shared/hazel/stad_simclr_lr1/train
 parser = argparse.ArgumentParser(description='MIL Training') 
-parser.add_argument('--data-root', default='/mnt/aitrics_ext/ext02/camelyon16_eosin_224_16_pkl_0524/swav_res50', help='path to dataset')
+parser.add_argument('--data-root', default='/mnt/aitrics_ext/ext01/shared/camelyon16_eosin_224_16_pkl_0524/swav_res50', help='path to dataset')
 parser.add_argument('--fold', default=5, help='number of fold for cross validation')
 parser.add_argument('--workers', default=4, type=int, metavar='N', help='number of data loading workers (default: 1)')
-parser.add_argument('--scheduler', default='None', choices=['None', 'single', 'multi'], type=str, help='loss scheduler')
-parser.add_argument('--loss', default='bce', choices=['bce'], type=str, help='loss function')
+parser.add_argument('--scheduler-centroid', default='single', choices=['None', 'single', 'multi'], type=str, help='loss scheduler')
 parser.add_argument('--batch-size', default=1, type=int, metavar='N', help='the total batch size on the current node (DDP)')
-parser.add_argument('--momentum', default=0.9, type=float, help='sgd momentum')
 parser.add_argument('--seed', default=1, type=int, help='seed for initializing training. ')
 
 parser.add_argument('--dataset', default='CAMELYON16', choices=['CAMELYON16', 'tcga_lung', 'tcga_stad'], type=str, help='dataset type')
-parser.add_argument('--aux-loss', default='loss_div_vc', choices=['None', 'loss_dbat', 'loss_var', 'loss_contrastive', 'loss_div_vc', 'loss_div_contrastive'], type=str, help='auxiliary loss type')
-parser.add_argument('--num-head', default=5, type=int, help='# of projection head for each instance token')
-# parser.add_argument('--dim-head', default=128, type=int, help='feature dimension for instance token heads')
-parser.add_argument('--layernum-head', default=2, choices=[0,1,2], type=int, help='layer number of projection head for instance tokens')
+parser.add_argument('--train-instance', default='intrainstance_vc', choices=['None', 'semisup1', 'semisup2', 'intrainstance_divdis',
+                                                                                'interinstance_vc','interinstance_cosine', 'intrainstance_vc',
+                                                                                'intrainstance_cosine'], type=str, help='instance loss type')
+parser.add_argument('--ic-num-head', default=5, type=int, help='# of projection head for each instance token')
+parser.add_argument('--ic-depth', default=2, choices=[0,1,2], type=int, help='layer number of projection head for instance tokens')
 parser.add_argument('--weight-agree', default=1.0, type=float, help='weight for the agree loss, eg, center, cosine')
 parser.add_argument('--weight-disagree', default=1.0, type=float, help='weight for the disagree loss, eg, variance loss, contrastive')
 parser.add_argument('--weight-cov', default=1.0, type=float, help='weight for the covariance loss')
 parser.add_argument('--stddev-disagree', default=1.0, type=float, help='std dev threshold for disagree loss')
-
-# parser.add_argument('--pretrain-type', default='ImageNet_Res50_im', help='weight folder')
-# parser.add_argument('--pretrain-type', default='simclr_lr1', help='weight folder')
-parser.add_argument('--epochs', default=200, type=int, metavar='N', help='number of total epochs to run')
-parser.add_argument('--optimizer', default='sgd', choices=['sgd', 'adam', 'adamw'], type=str, help='optimizer')
+parser.add_argument('--optimizer-nc', default='sgd', choices=['sgd', 'adam', 'adamw'], type=str, help='optimizer for negative centroid')
 parser.add_argument('--lr', default=0.003, type=float, metavar='LR', help='initial learning rate', dest='lr')
 # parser.add_argument('--lr-aux', default=0.001, type=float, help='initial learning rate')
-parser.add_argument('--lr-center', default=0.0001, type=float, help='initial learning rate')
-# DTFD: 1e-4, TransMIL: 1e-5
-parser.add_argument('--weight-decay', default=1e-5, type=float, metavar='W', help='weight decay (default: 1e-5)', dest='weight_decay')
-parser.add_argument('--mil-model', default='Dtfd_tune', type=str, help='use pre-training method')
-parser.add_argument('--if-learn-instance', default=False, help='if_learn_instance')
-parser.add_argument('--share-proj', default=False, help='if share projection')
-parser.add_argument('--pseudo-prob-threshold', default=0.8, type=float, help='pseudo_prob_threshold')
-parser.add_argument('--layerwise-shuffle', default=False, help='Shuffle')
-parser.add_argument('--sr-ratio', default=8, type=int, help='self-attention grouping ratio')
-parser.add_argument('--if-balance-param', default=False, help='balance_param')
+parser.add_argument('--lr-center', default=0.001, type=float, help='initial learning rate')
+parser.add_argument('--mil-model', default='Dtfd', type=str, help='use pre-training method')
 
 parser.add_argument('--pushtoken', default=False, help='Push Bullet token')
 
@@ -84,42 +71,13 @@ def run_fold(args, fold, txt_name) -> Tuple:
 
     dataset_train = Dataset_pkl(path_pretrained_pkl_root=args.data_root, fold_now=fold, fold_all=args.fold, shuffle_slide=True, shuffle_patch=True, split='train', num_classes=args.num_classes, seed=args.seed)
     loader_train = torch.utils.data.DataLoader(dataset_train, batch_size=args.batch_size, shuffle=True, num_workers=args.workers, pin_memory=True)
-    
+    args.num_step = len(loader_train)
+
     dataset_val = Dataset_pkl(path_pretrained_pkl_root=args.data_root, fold_now=fold, fold_all=args.fold, shuffle_slide=True, shuffle_patch=True, split='val', num_classes=args.num_classes, seed=args.seed)
     loader_val = torch.utils.data.DataLoader(dataset_val, batch_size=args.batch_size, shuffle=False, num_workers=args.workers, pin_memory=True)
-
-    args.num_step = len(loader_train)
-    if 'Res18' in args.data_root:
-        dim_in = 512
-    else:
-        dim_in = 2048
-
-    if 'monai' in args.mil_model:
-        mode = args.mil_model.split('.')[-1]
-        model = milmodels.__dict__['MonaiMil'](dim_in=dim_in, dim_latent=512, dim_out=args.num_classes, mil_mode=mode).cuda()
-    elif args.mil_model == 'MilTransformer':
-        model = milmodels.__dict__[args.mil_model](args=args, if_learn_instance=args.if_learn_instance, pseudo_prob_threshold=args.pseudo_prob_threshold, share_proj=args.share_proj, optimizer=None, criterion=None, scheduler=None, dim_in=dim_in, dim_latent=512, dim_out=args.num_classes).cuda()
-    else:
-        model = milmodels.__dict__[args.mil_model](args=args, optimizer=None, criterion=None, scheduler=None, dim_in=dim_in, dim_latent=512, dim_out=args.num_classes, aux_loss=args.aux_loss, num_head=args.num_head, layernum_head=args.layernum_head, weight_agree=args.weight_agree, weight_disagree=args.weight_disagree, weight_cov=args.weight_cov, stddev_disagree=args.stddev_disagree).cuda()
+      
+    model = milmodels.__dict__[args.mil_model](args=args, ma_dim_in=2048).cuda()
     
-    # if args.loss == 'bce':
-    #     criterion = nn.BCEWithLogitsLoss().cuda()
-        
-    # if args.optimizer == 'adam':
-    #     optimizer = torch.optim.Adam(model.parameters(), 0, weight_decay=args.weight_decay)
-    # elif args.optimizer == 'sgd':
-    #     optimizer = torch.optim.SGD(model.parameters(), 0, momentum=args.momentum, weight_decay=args.weight_decay)
-    # elif args.optimizer == 'adamw':
-    #     optimizer = torch.optim.AdamW(model.parameters(), 0, weight_decay=args.weight_decay)
-    
-    
-
-    # # 고쳐야 하나..?
-    # if args.scheduler == 'single':
-    #     scheduler = CosineAnnealingWarmUpSingle(optimizer, max_lr=args.lr, epochs=args.epochs, steps_per_epoch=len(loader_train))
-    # elif args.scheduler == 'multi':
-    #     scheduler = CosineAnnealingWarmUpRestarts(optimizer, eta_max=args.lr, step_total=args.epochs * len(loader_train))
-
     auc_best = 0.0
     epoch_best = 0
     file_name = f'{txt_name}_lr{args.lr}_fold{fold}.pth'
@@ -155,21 +113,11 @@ def train(train_loader, model):
     model.train()
     for i, (images, target) in enumerate(train_loader):
         # images --> #bags x #instances x #dims
-        images = images.type(torch.FloatTensor).to(args.device, non_blocking=True)
+        images = images.type(torch.FloatTensor).cuda(args.device, non_blocking=True)
         # target --> #bags x #classes
-        target = target.type(torch.FloatTensor).to(args.device, non_blocking=True)
+        target = target.type(torch.FloatTensor).cuda(args.device, non_blocking=True)
 
         model.update(images, target)
-
-        # # First step
-        # optimizer.zero_grad()
-        # with torch.cuda.amp.autocast():
-        #     loss = model.calculate_objective(images, target)
-
-        # scaler.scale(loss).backward()
-        # scaler.step(optimizer)
-        # scaler.update()
-        # scheduler.step()
 
 def validate(val_loader, model, args):
     bag_labels = []
@@ -181,11 +129,10 @@ def validate(val_loader, model, args):
             # bag_labels --> #classes
             bag_labels.append(target.squeeze(0).numpy())
             # images --> #bags x #instances x #dims
-            images = images.cuda(args.device, non_blocking=True)
+            images = images.type(torch.FloatTensor).cuda(args.device, non_blocking=True)
             
-            with torch.cuda.amp.autocast():
-                # output --> #bags x #classes
-                prob_bag, _ = model.infer(images)
+            # output --> #bags x #classes
+            prob_bag, _ = model.infer(images)
             #classes  (prob)
             bag_predictions.append(prob_bag.squeeze(0).cpu().numpy())
 
@@ -200,21 +147,12 @@ def validate(val_loader, model, args):
 
 if __name__ == '__main__':
     args = parser.parse_args()
-    if args.if_balance_param:
-        if args.dataset == 'CAMELYON16':
-            args.balance_param = math.log(111./159.)
-        elif args.dataset == 'tcga_lung':
-            args.balance_param = math.log(371./380.)    
-        elif args.dataset == 'tcga_stad':
-            args.balance_param = math.log(39./252.)
-    else:
-        args.balance_param = 0.0
+    
     args.pretrain_type = args.data_root.split("/")[-2:]
     # txt_name = f'{args.dataset}_{args.pretrain_type}_downstreamLR_{args.lr}_optimizer_{args.optimizer}_epoch{args.epochs}_wd{args.weight_decay}'    
-    txt_name = f'saved_models/{datetime.today().strftime("%m%d")}_{args.dataset}_{args.mil_model}_aux_loss{args.aux_loss}' +\
-    f'_num_head{args.num_head}_layernum_head{args.layernum_head}_lr_center{args.lr_center}' +\
+    txt_name = f'{datetime.today().strftime("%m%d")}_{args.dataset}_{args.mil_model}_train_instance{args.train_instance}' +\
+    f'_ic_num_head{args.ic_num_head}_ic_depth{args.ic_depth}_lr_center{args.lr_center}' +\
     f'_weight_agree{args.weight_agree}_weight_disagree{args.weight_disagree}_weight_cov{args.weight_cov}_stddev_disagree{args.stddev_disagree}'
-
     acc_fold_tr = []
     auc_fold_tr = []
 
@@ -226,6 +164,15 @@ if __name__ == '__main__':
 
     args.num_classes=2 if args.dataset=='tcga_lung' else 1
     args.device = 0
+
+    if args.mil_model == 'Dtfd':
+        args.epochs = 200
+    elif args.mil_model == 'Dsmil':
+        args.epochs = 40
+    elif args.mil_model == 'Attention':
+        args.epochs = 100
+    elif args.mil_model == 'GatedAttention':
+        args.epochs = 100
 
     t_start = time.time()
     for fold_num in range(1, args.fold+1):

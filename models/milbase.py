@@ -58,9 +58,11 @@ class Classifier_instance(nn.Module):
         return self.fc(x)
 
 
+
 class MilBase(nn.Module):
     """
     1) define train_instance:
+                            (None)
                             semisup1
                             semisup2
                             intrainstance_divdis
@@ -72,24 +74,30 @@ class MilBase(nn.Module):
     3) set self.instance_classifier
 
     """
-    def __init__(self, args, optimizer=None, criterion=None, ic_dim_in:int=2048, ic_dim_out=1):
+    def __init__(self, args, criterion=None, ma_dim_in=2048, ic_dim_in:int=2048):
         """
+        ma --> mil aggregator
         ic --> instance classifier
         """
         super().__init__()
         self.args = args
         self.optimizer = {}
         self.scheduler = {}
-
-        if args.ic_depth == 0:
-            assert args.ic_num_head == 1
-            assert ic_dim_in == ic_dim_out
+        self.ma_dim_in = ma_dim_in
+        
+        if 'instance' in args.train_instance:
+            if args.ic_depth == 0:
+                ic_dim_out = ic_dim_in
+                assert args.ic_num_head == 1
+            else:
+                ic_dim_out = 128
+        else:
+            ic_dim_out = args.num_classes
 
         if criterion is not None:
-            self.criterion = criterion
+            self.criterion_bag = criterion
         else:
-            self.criterion = nn.BCEWithLogitsLoss()
-        
+            self.criterion_bag = nn.BCEWithLogitsLoss()        
         self.sigmoid = nn.Sigmoid()
 
         self.instance_classifier = Classifier_instance(dim_in=ic_dim_in, dim_out=ic_dim_out, layer_depth=args.ic_depth, num_head=args.ic_num_head)
@@ -106,18 +114,19 @@ class MilBase(nn.Module):
         elif (args.train_instance == 'interinstance_cosine') or (args.train_instance=='intrainstance_cosine'):
             self.negative_centroid = nn.Parameter(torch.zeros(dim_negative_centroid, requires_grad=True).cuda())
 
-        if self.args.optimizer == 'adam':
-            self.optimizer['negative_centroid'] = optim.Adam(params=[self.negative_centroid], lr=0, betas=(0.9, 0.999), lr=self.args.lr_center, weight_decay=0.0)
-        elif self.args.optimizer == 'adamw':
-            self.optimizer['negative_centroid'] = optim.AdamW(params=[self.negative_centroid], lr=0, betas=(0.9, 0.999), lr=self.args.lr_center, weight_decay=0.0)
-        elif self.args.optimizer == 'sgd':
-            self.optimizer['negative_centroid'] = optim.SGD(params=[self.negative_centroid], lr=self.args.lr_center, weight_decay=0.0)
+        if hasattr(self, 'negative_centroid'):
+            if self.args.optimizer_nc == 'adam':
+                self.optimizer['negative_centroid'] = optim.Adam(params=[self.negative_centroid], lr=self.args.lr_center, weight_decay=0.0)
+            elif self.args.optimizer_nc == 'adamw':
+                self.optimizer['negative_centroid'] = optim.AdamW(params=[self.negative_centroid], lr=self.args.lr_center, weight_decay=0.0)
+            elif self.args.optimizer_nc == 'sgd':
+                self.optimizer['negative_centroid'] = optim.SGD(params=[self.negative_centroid], lr=self.args.lr_center, weight_decay=0.0)
 
         # args.num_step = len(loader_train)
-        if self.args.scheduler == 'single':
-            self.scheduler['negative_centroid'] = CosineAnnealingWarmUpSingle(self.optimizer_negative_centroid, max_lr=self.args.lr_center, epochs=self.args.epochs, steps_per_epoch=self.args.num_step)
-        elif self.args.scheduler == 'multi':
-            self.scheduler['negative_centroid'] = CosineAnnealingWarmUpRestarts(self.optimizer_negative_centroid, eta_max=self.args.lr_center, step_total=self.args.epochs*self.args.num_step)
+        if self.args.scheduler_centroid == 'single':
+            self.scheduler['negative_centroid'] = CosineAnnealingWarmUpSingle(self.optimizer['negative_centroid'], max_lr=self.args.lr_center, epochs=self.args.epochs, steps_per_epoch=self.args.num_step)
+        elif self.args.scheduler_centroid == 'multi':
+            self.scheduler['negative_centroid'] = CosineAnnealingWarmUpRestarts(self.optimizer['negative_centroid'], eta_max=self.args.lr_center, step_total=self.args.epochs*self.args.num_step)
 
     def forward(self, x: torch.Tensor):
         """
@@ -127,10 +136,12 @@ class MilBase(nn.Module):
         <OUTPUT> <- None if unnecessary
         Dict
         logit_bag: #bags x #class
-        logit_instance: #bags x #instances x #class
+        logit_instance: #instances x fs (x Head_num)
+    
         """
         pass
-
+        
+    @torch.no_grad()
     def infer(self, x: torch.Tensor):
         """
         <INPUT>
@@ -143,8 +154,8 @@ class MilBase(nn.Module):
         """
         logit_dict = self.forward(x)
 
-        prob_bag = self.sigmoid(logit_dict['logit_bag'])
-        prob_instance = self.sigmoid(logit_dict['logit_instance']) if 'logit_instance' in logit_dict.keys() else None
+        prob_bag = self.sigmoid(logit_dict['bag'])
+        prob_instance = self.sigmoid(logit_dict['instance']) if 'instance' in logit_dict.keys() else None
         return prob_bag, prob_instance
     
     def calculate_objective(self, X, Y):
@@ -162,12 +173,15 @@ class MilBase(nn.Module):
         """
 
         logit_dict = self.forward(X)
-        loss_bag = self.criterion_bag(logit_dict['logit_bag'])
+        loss_bag = self.criterion_bag(logit_dict['bag'], Y)
+
+        # if 'instance' in logit_dict.keys():
         if self.args.train_instance == 'None':
             return loss_bag
         else:
-            loss_instance = getattr(self, self.args.train_instance)(logit_dict['logit_instance'])
+            loss_instance = getattr(self, self.args.train_instance)(logit_dict['instance'], int(Y[0, 0]))
             return loss_bag + loss_instance
+            
 
     def update(self, X, Y):
         """
@@ -219,7 +233,7 @@ class MilBase(nn.Module):
         notation : H - head , D - num_class, B - sequence length(본 논문의 batch size)
         """    
         if target == 0:
-            return self.criterion(p, torch.zeros_like(p, device=p.get_device()))
+            return self.criterion_bag(p, torch.zeros_like(p, device=p.get_device()))
         elif target ==1:
             p = p.sigmoid().unsqueeze(-1) 
             p = torch.cat([p, 1 - p], dim=-1) # B, H, D
@@ -258,19 +272,19 @@ class MilBase(nn.Module):
         # loss_variance = torch.mean(F.relu(1.0 - torch.sqrt(p.var(dim=0) + 0.00001)))
         _p = F.normalize(_p, dim=1, eps=1e-8)
         cov = (_p.T @ _p) / (ls - 1.0)
-        loss = self.weight_cov*(self.off_diagonal(cov).pow_(2).sum().div(fs)) # covariance loss
+        loss = self.args.weight_cov*(self.off_diagonal(cov).pow_(2).sum().div(fs)) # covariance loss
 
         # print(f'==================================')
         # print(f'cov: {self.off_diagonal(cov).pow_(2).sum().div(fs) }')
 
         if target == 0:
-            _representative_vector = p - self.representative_vector.expand(ls, -1) # _representative_vector : Length_sequence x fs
-            loss += self.weight_agree * torch.mean(torch.sqrt(_representative_vector.var(dim=0) + 0.00001)) # var loss
-            # print(f'var: {self.weight_agree * torch.mean(torch.sqrt(_representative_vector.var(dim=0) + 0.00001))}')
-            # print(f'center location: {self.representative_vector[0,:5]}')
+            _negative_centroid = p - self.negative_centroid.expand(ls, -1) # _negative_centroid : Length_sequence x fs
+            loss += self.args.weight_agree * torch.mean(torch.sqrt(_negative_centroid.var(dim=0) + 0.00001)) # var loss
+            # print(f'var: {self.args.weight_agree * torch.mean(torch.sqrt(_negative_centroid.var(dim=0) + 0.00001))}')
+            # print(f'center location: {self.negative_centroid[0,:5]}')
         elif target == 1:
-            loss += self.weight_disagree * torch.mean(F.relu(self.stddev_disagree - torch.sqrt(_p.var(dim=0) + 0.00001))) # variance
-            # print(f'variance: {self.weight_disagree * torch.mean(F.relu(self.stddev_disagree - torch.sqrt(_p.var(dim=0) + 0.00001)))}')
+            loss += self.args.weight_disagree * torch.mean(F.relu(self.args.stddev_disagree - torch.sqrt(_p.var(dim=0) + 0.00001))) # variance
+            # print(f'variance: {self.args.weight_disagree * torch.mean(F.relu(self.args.stddev_disagree - torch.sqrt(_p.var(dim=0) + 0.00001)))}')
             # print(f'max variance: {torch.amax(_p.var(dim=0))}')
 
         return loss
@@ -287,20 +301,20 @@ class MilBase(nn.Module):
         # loss_variance = torch.mean(F.relu(1.0 - torch.sqrt(p.var(dim=0) + 0.00001)))
         _p = F.normalize(_p, dim=1, eps=1e-8)
         cov = (_p.T @ _p) / (ls - 1.0)
-        loss = self.weight_cov*(self.off_diagonal(cov).pow_(2).sum().div(fs)) # covariance loss
+        loss = self.args.weight_cov*(self.off_diagonal(cov).pow_(2).sum().div(fs)) # covariance loss
         
         # print(f'==================================')
         # print(f'cov: {self.off_diagonal(cov).pow_(2).sum().div(fs) }')
 
         if target == 0:
-            _representative_vector = F.normalize(self.representative_vector, dim=0, eps=1e-8) # _representative_vector : fs
+            _negative_centroid = F.normalize(self.negative_centroid, dim=0, eps=1e-8) # _negative_centroid : fs
             p = F.normalize(p, dim=1, eps=1e-8)
-            loss -= self.weight_agree * torch.mean(p @ _representative_vector) # cosine loss
-            # print(f'cosine - neg: {self.weight_agree * torch.mean(p @ _representative_vector)}')
-            # print(f'cosine location: {self.representative_vector[:5]}')
+            loss -= self.args.weight_agree * torch.mean(p @ _negative_centroid) # cosine loss
+            # print(f'cosine - neg: {self.args.weight_agree * torch.mean(p @ _negative_centroid)}')
+            # print(f'cosine location: {self.negative_centroid[:5]}')
         elif target == 1:
-            loss += self.weight_disagree * torch.sum((p_n @ p_n.T).fill_diagonal_(0))/(ls*(ls-1.0))
-            # print(f'cosine - pos: {self.weight_disagree * torch.sum((p_n @ p_n.T).fill_diagonal_(0))/(ls*(ls-1.0))}')
+            loss += self.args.weight_disagree * torch.sum((p_n @ p_n.T).fill_diagonal_(0))/(ls*(ls-1.0))
+            # print(f'cosine - pos: {self.args.weight_disagree * torch.sum((p_n @ p_n.T).fill_diagonal_(0))/(ls*(ls-1.0))}')
             # print(f'max variance: {torch.amax(p_n.var(dim=0))}')
 
         return loss
@@ -311,7 +325,6 @@ class MilBase(nn.Module):
  
         p: Length_sequence x fs x Head_num
         """
-        target=int(target)
         
         ls, fs, hn = p.shape
         p_whiten_head = p - p.mean(dim=2, keepdim=True) # Length_sequence x fs x Head_num
@@ -321,20 +334,20 @@ class MilBase(nn.Module):
         p_whiten_merged = F.normalize(p_whiten_merged, dim=1, eps=1e-8)
         
         cov = (p_whiten_merged.T @ p_whiten_merged) / ((ls*hn) - 1.0)
-        loss = self.weight_cov*(self.off_diagonal(cov).pow_(2).sum().div(fs)) # covariance loss
-        # print(f'==================================')
-        # print(f'cov: {self.weight_cov*(self.off_diagonal(cov).pow_(2).sum().div(fs))}')
+        loss = self.args.weight_cov*(self.off_diagonal(cov).pow_(2).sum().div(fs)) # covariance loss
+        print(f'==================================')
+        print(f'cov: {self.args.weight_cov*(self.off_diagonal(cov).pow_(2).sum().div(fs))}')
         if target == 0:
-            _representative_vector = self.representative_vector.expand(ls*hn, fs) # _representative_vector : (Length_sequence x Head_num) x fs 
-            loss += self.weight_agree * torch.mean(torch.sqrt((p_whiten_merged - _representative_vector).var(dim=0, keepdim=False) + 0.00001))
-            # print(f'var_neg: {self.weight_agree * torch.mean(torch.sqrt((p_whiten_merged - _representative_vector).var(dim=0, keepdim=False) + 0.00001))}')
-            # print(f'negative center location: {self.representative_vector[0,:5]}')
+            _negative_centroid = self.negative_centroid.expand(ls*hn, fs) # _negative_centroid : (Length_sequence x Head_num) x fs 
+            loss += self.args.weight_agree * torch.mean(torch.sqrt((p_whiten_merged - _negative_centroid).var(dim=0, keepdim=False) + 0.00001))
+            print(f'var_neg: {self.args.weight_agree * torch.mean(torch.sqrt((p_whiten_merged - _negative_centroid).var(dim=0, keepdim=False) + 0.00001))}')
+            print(f'negative center location: {self.negative_centroid[0,:5]}')
             
         elif target == 1:
-            loss += self.weight_disagree * torch.mean(F.relu(self.stddev_disagree - torch.sqrt(p_whiten_head.var(dim=2) + 0.00001))) # standard deviation
-            # print(f'variance: {self.weight_disagree * torch.mean(F.relu(self.stddev_disagree - torch.sqrt(p_whiten_head.var(dim=2) + 0.00001)))}')
-            # print(f'max variance: {torch.amax(p_whiten_head.var(dim=2))}')
-        # print(f'weight: {[f.weight[0,0].item() for f in self.instance_classifier.fc]}')
+            loss += self.args.weight_disagree * torch.mean(F.relu(self.args.stddev_disagree - torch.sqrt(p_whiten_head.var(dim=2) + 0.00001))) # standard deviation
+            print(f'variance: {self.args.weight_disagree * torch.mean(F.relu(self.args.stddev_disagree - torch.sqrt(p_whiten_head.var(dim=2) + 0.00001)))}')
+            print(f'max variance: {torch.amax(p_whiten_head.var(dim=2))}')
+        # print(f'weight: {[f[0].weight[0,0].item() for f in self.instance_classifier.fc]}')
         return loss
 
     def intrainstance_cosine(self, p: torch.Tensor, target=0):
@@ -343,7 +356,6 @@ class MilBase(nn.Module):
  
         p: Length_sequence x fs x Head_num
         """
-        target=int(target)
         
         ls, fs, hn = p.shape
         p_t = torch.transpose(p, 1, 2) # Length_sequence x Head_num x fs
@@ -352,75 +364,28 @@ class MilBase(nn.Module):
         p_whiten_merged = rearrange(torch.transpose(p_whiten, 1, 2).contiguous(), "l h f -> (l h) f") # p_whiten_merged: (Length_sequence x Head_num) x fs
         p_whiten_merged = F.normalize(p_whiten_merged, dim=1, eps=1e-8)
         cov = (p_whiten_merged.T @ p_whiten_merged) / ((ls*hn) - 1.0)
-        loss = self.weight_cov*(self.off_diagonal(cov).pow_(2).sum().div(fs)) # covariance loss
-        # print(f'==================================')
-        # print(f'cov: {self.weight_cov*(self.off_diagonal(cov).pow_(2).sum().div(fs))}')
+        loss = self.args.weight_cov*(self.off_diagonal(cov).pow_(2).sum().div(fs)) # covariance loss
+        print(f'==================================')
+        print(f'cov: {self.args.weight_cov*(self.off_diagonal(cov).pow_(2).sum().div(fs))}')
 
         if target == 0:
-            _representative_vector = F.normalize(self.representative_vector, dim=0, eps=1e-8) # _representative_vector : fs
+            _negative_centroid = F.normalize(self.negative_centroid, dim=0, eps=1e-8) # _negative_centroid : fs
             p = F.normalize(p_t, dim=2, eps=1e-8) # p: Length_sequence x Head_num x fs
-            loss -= self.weight_agree * torch.mean(p @ _representative_vector) # Length_sequence x Head_num
-            # print(f'cosine loss: {self.weight_agree * torch.mean(p @ _representative_vector)}')
-            # print(f'center location: {self.representative_vector[:5]}')
+            loss -= self.args.weight_agree * torch.mean(p @ _negative_centroid) # Length_sequence x Head_num
+            print(f'cosine loss: {self.args.weight_agree * torch.mean(p @ _negative_centroid)}')
+            print(f'center location: {self.negative_centroid[:5]}')
         elif target == 1:
-            loss += self.weight_disagree * torch.sum(torch.bmm(F.normalize(p_t, dim=2, eps=1e-8), F.normalize(p, dim=1, eps=1e-8)) * self.mask_diag)/(ls*hn*(hn-1.0))
-            # loss += self.weight_disagree * torch.mean(F.relu(self.stddev_disagree - torch.sqrt(p_whiten.var(dim=2) + 0.00001))) # standard deviation
-            # print(f'variance: {self.weight_disagree * torch.sum(torch.bmm(F.normalize(p_t, dim=2, eps=1e-8), F.normalize(p, dim=1, eps=1e-8)) * self.mask_diag)/(ls*hn*(hn-1.0))}')
+            loss += self.args.weight_disagree * torch.sum(torch.bmm(F.normalize(p_t, dim=2, eps=1e-8), F.normalize(p, dim=1, eps=1e-8)) * self.mask_diag)/(ls*hn*(hn-1.0))
+            print(f'variance: {self.args.weight_disagree * torch.sum(torch.bmm(F.normalize(p_t, dim=2, eps=1e-8), F.normalize(p, dim=1, eps=1e-8)) * self.mask_diag)/(ls*hn*(hn-1.0))}')
             # print(f'max variance: {torch.amax(F.normalize(p, dim=1, eps=1e-8).var(dim=2))}')
 
         return loss
 
+    def off_diagonal(self, x):
+        n, m = x.shape
+        assert n == m
+        return x.flatten()[:-1].view(n - 1, n + 1)[:, 1:].flatten()
 
 
 
 
-
-
-
-class MilCustom(MilBase):
-
-    # def __init__(self, args, optimizer=None, criterion=None, scheduler=None, encoder=None, dim_in:int=2048, dim_latent: int= 512, dim_out = 1, pool = nn.AdaptiveMaxPool1d((1))):
-    def __init__(self, encoder=None, pool = nn.AdaptiveMaxPool1d((1)), **kwargs):
-        super().__init__(**kwargs)
-
-        if encoder == None:
-            self.encoder = nn.Sequential(
-                # nn.Dropout(p=0.3),
-                nn.Linear(self.dim_in, self.dim_latent),
-                nn.ReLU(),
-            )
-        else:
-            self.encoder = encoder
-
-        self.pool = pool
-        self.score = nn.Linear(self.dim_latent, self.dim_out, bias=True)
-        
-
-    def forward(self, x: torch.Tensor):
-        
-        x = self.encoder(x) # #slide x #patches x dim_latent
-
-        x = self.score(x) # #slide x #patches x dim_out
-
-        logit_bag = self.pool(torch.transpose(x,1,2)).squeeze(2) # #slide x #dim_out
-        # Y_hat = torch.sign(F.relu(Y_logit)).float()
-
-        return logit_bag, None
-
-    def calculate_objective(self, X, Y):
-        logit_bag, _ = self.forward(X)
-        loss = self.criterion(logit_bag, Y)
-
-        return loss    
-
-
-    
-
-
-def milmax(encoder=None, dim_in:int=2048, dim_latent: int= 512, dim_out = 1):
-    return MilCustom(encoder=encoder, dim_in=dim_in, dim_latent=dim_latent, dim_out=dim_out, pool=nn.AdaptiveMaxPool1d((1)))
-
-
-
-def milmean(encoder=None, dim_in:int=2048, dim_latent: int= 512, dim_out = 1):
-    return MilCustom(encoder=encoder, dim_in=dim_in, dim_latent=dim_latent, dim_out=dim_out, pool=nn.AdaptiveAvgPool1d((1)))
