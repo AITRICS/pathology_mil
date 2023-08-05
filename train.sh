@@ -1,47 +1,37 @@
+## ic --> instance classifier
+## nc --> negative centroid
+
 gpu=0
+data_root=/mnt/aitrics_ext/ext01/shared/camelyon16_eosin_224_16_pkl_0524/swav_res50
+# single도 해볼 수 있음
+scheduler_centroid=None
 dataset=CAMELYON16
-data_root=/mnt/aitrics_ext/ext02/camelyon16_eosin_224_16_pkl_0524/swav_res50
-lr_downstream=0.003
-
-milmodel=Dtfd_noscale
-CUDA_VISIBLE_DEVICES=$gpu nohup python train.py --mil-model $milmodel --dataset $dataset --data-root $data_root --epochs 200 --workers 4 --lr $lr_downstream --pushtoken o.OsyxHt1pZuwUBoMEFYBuzHFNjV5ekr95 > LR_${lr_downstream}_milmodel_${milmodel}_gpu_${gpu}.txt &
-(( gpu+=1 ))
-
-milmodel=Dtfd_scale
-CUDA_VISIBLE_DEVICES=$gpu nohup python train.py --mil-model $milmodel --dataset $dataset --data-root $data_root --epochs 200 --workers 4 --lr $lr_downstream --pushtoken o.OsyxHt1pZuwUBoMEFYBuzHFNjV5ekr95 > LR_${lr_downstream}_milmodel_${milmodel}_gpu_${gpu}.txt &
-(( gpu+=1 ))
-
-milmodel=Dtfd_add_scale
-CUDA_VISIBLE_DEVICES=$gpu nohup python train.py --mil-model $milmodel --dataset $dataset --data-root $data_root --epochs 200 --workers 4 --lr $lr_downstream --pushtoken o.OsyxHt1pZuwUBoMEFYBuzHFNjV5ekr95 > LR_${lr_downstream}_milmodel_${milmodel}_gpu_${gpu}.txt &
-(( gpu+=1 ))
-
-
-milmodel=Dtfd_tune
-aux_loss=loss_div_vc
-# aux_loss=loss_jsd
-# aux_loss=loss_vc
-# aux_head=2
-# layernum_head=2
+# None, intrainstance_divdis, interinstance_vc, interinstance_cosine, intrainstance_vc, intrainstance_cosine
+train_instance=intrainstance_vc 
+# intrainstance_divdis 하면 당연히 ic_num_head 1
+ic_num_head=5
+# intrainstance_divdis 하면 ic_num_head 1
+ic_depth=2
 weight_agree=1.0
 weight_disagree=1.0
+# 0도 해봄직
 weight_cov=1.0
 stddev_disagree=1.0
+# negative centroid 업데이트 방법: sgd, adamw, adam
+optimizer_nc=sgd
+lr=0.003
+lr_center=0.0001
+# Dtfd, Attention, GatedAttention 가능
+mil_model=Dtfd
 
-for layernum_head in 1 2; do
-    for lr_downstream in 0.003 0.0003; do
-        # lr mix 길이는 8이어야 함 (gpu 갯수와 매칭 되어야 함)
-        # CUDA_VISIBLE_DEVICES=$gpu nohup python train_mil.py --dataset $dataset --pretrain-type $lr_pretrained --epochs 100 --optimizer $optimizer --lr $lr_downstream --weight-decay 1e-4 --scheduler $scheduler > ${lr_pretrained}_LR_${lr_downstream}_sch_${scheduler}_sgd.txt &        
-        # CUDA_VISIBLE_DEVICES=$gpu nohup python train_mil.py --dataset $dataset --pretrain-type ${lr_pretrained} --epochs 100 --optimizer $optimizer --lr $lr_downstream --weight-decay 1e-4 --scheduler $scheduler > ${lr_pretrained}_LR_${lr_downstream}_sch_${scheduler}_opt_${optimizer}.txt &
-        # optimizer=sgd
-        # CUDA_VISIBLE_DEVICES=$gpu nohup python train_mil_sam.py --dataset $dataset --pretrain-type $lr_pretrained --epochs 100 --optimizer $optimizer --lr $lr_downstream --weight-decay 1e-4 --scheduler $scheduler --pushtoken o.OsyxHt1pZuwUBoMEFYBuzHFNjV5ekr95 > ${lr_pretrained}_LR_${lr_downstream}_sch_${scheduler}_opt_${optimizer}_sam.txt &
-        # optimizer=adamw
-        CUDA_VISIBLE_DEVICES=$gpu nohup python train.py --layernum-head $layernum_head --weight-agree $weight_agree --weight-disagree $weight_disagree --weight-cov $weight_cov --mil-model $milmodel --dataset $dataset --data-root $data_root --epochs 200 --workers 4 --aux-loss $aux_loss --weight-cov $weight_cov --lr $lr_downstream --pushtoken o.OsyxHt1pZuwUBoMEFYBuzHFNjV5ekr95 > LR_${lr_downstream}_milmodel_${milmodel}_gpu_${gpu}.txt &
-        # CUDA_VISIBLE_DEVICES=$gpu nohup python train_mil_sam.py --dataset $dataset --pretrain-type ${lr_pretrained} --epochs 100 --optimizer $optimizer --lr $lr_downstream --weight-decay 1e-4 --scheduler $scheduler > ${lr_pretrained}_LR_${lr_downstream}_sch_${scheduler}_opt_${optimizer}.txt &
+# 이렇게 하면 8개 돔. gpu 0부터 시작
+for weight_cov in 0 1; do
+    for lr in 0.01 0.003 0.001 0.0003; do
+
+        CUDA_VISIBLE_DEVICES=$gpu nohup python train.py --data-root $data_root --scheduler-centroid $scheduler_centroid --dataset $dataset --train-instance $train_instance \
+        --ic-num-head $ic_num_head --ic-depth $ic_depth --weight-agree $weight_agree --weight-disagree $weight_disagree --weight-cov $weight_cov --stddev-disagree $stddev_disagree \
+        --optimizer-nc $optimizer_nc --lr $lr --lr-center $lr_center --mil-model $mil_model --pushtoken o.OsyxHt1pZuwUBoMEFYBuzHFNjV5ekr95 > LR_${lr_downstream}_milmodel_${milmodel}_gpu_${gpu}.txt &
 
         (( gpu+=1 ))
     done
 done
-layernum_head=2
-lr_downstream=0.00003
-CUDA_VISIBLE_DEVICES=$gpu nohup python train.py --layernum-head $layernum_head --weight-agree $weight_agree --weight-disagree $weight_disagree --weight-cov $weight_cov --mil-model $milmodel --dataset $dataset --data-root $data_root --epochs 200 --workers 4 --aux-loss $aux_loss --weight-cov $weight_cov --lr $lr_downstream --pushtoken o.OsyxHt1pZuwUBoMEFYBuzHFNjV5ekr95 > LR_${lr_downstream}_milmodel_${milmodel}_gpu_${gpu}.txt &
-        
