@@ -80,7 +80,7 @@ def run_fold(args, fold, txt_name) -> Tuple:
     
     auc_best = 0.0
     epoch_best = 0
-    file_name = f'{txt_name}_lr{args.lr}_fold{fold}.pth'
+    file_name = f'{txt_name}_lr{args.lr}_lr_center{args.lr_center}_fold{fold}.pth'
     for epoch in trange(1, (args.epochs+1)):        
         train(loader_train, model)
         auc, acc = validate(loader_val, model, args)
