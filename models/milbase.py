@@ -100,12 +100,13 @@ class MilBase(nn.Module):
             self.criterion_bag = nn.BCEWithLogitsLoss()        
         self.sigmoid = nn.Sigmoid()
 
-        self.instance_classifier = Classifier_instance(dim_in=ic_dim_in, dim_out=ic_dim_out, layer_depth=args.ic_depth, num_head=args.ic_num_head)
+        if args.train_instance != 'None':
+            self.instance_classifier = Classifier_instance(dim_in=ic_dim_in, dim_out=ic_dim_out, layer_depth=args.ic_depth, num_head=args.ic_num_head)
+            self.set_negative_centroid(args=args, dim_negative_centroid=ic_dim_out)
        
         if args.train_instance=='intrainstance_cosine':
             self.mask_diag = 1.0-torch.eye(args.ic_num_head, requires_grad=False).unsqueeze(0).cuda()
-
-        self.set_negative_centroid(args=args, dim_negative_centroid=ic_dim_out)
+        
 
     def set_negative_centroid(self, args, dim_negative_centroid):
 
