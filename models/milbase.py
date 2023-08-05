@@ -170,6 +170,9 @@ class MilBase(nn.Module):
 
         <OUTPUT>
         loss: scalar
+
+        <설명>
+        logit_dict['bag']: 
         """
 
         logit_dict = self.forward(X)
