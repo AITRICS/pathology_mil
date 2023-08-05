@@ -83,7 +83,6 @@ class MilBase(nn.Module):
         self.args = args
         self.optimizer = {}
         self.scheduler = {}
-<<<<<<< Updated upstream:models/milbase.py
         self.ma_dim_in = ma_dim_in
         
         if 'instance' in args.train_instance:
@@ -94,17 +93,6 @@ class MilBase(nn.Module):
                 ic_dim_out = 128
         else:
             ic_dim_out = args.num_classes
-=======
-        
-        # arguments for pseudo label weighting
-        self.T1 = args.T1
-        self.T2 = args.T2
-        self.af = args.af
-
-        if args.ic_depth == 0:
-            assert args.ic_num_head == 1
-            assert ic_dim_in == ic_dim_out
->>>>>>> Stashed changes:models/mil.py
 
         if criterion is not None:
             self.criterion_bag = criterion
