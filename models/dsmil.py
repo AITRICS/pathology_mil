@@ -104,9 +104,12 @@ class Dsmil(MilBase):
         # logit_instance: #instance x self.dim_out
         # logit_bag: 1 x self.dim_out
         instance_logit_stream1, logit_bag, _, _, feat_instance = self.milnet(dsmil_input) # ins_prediction (num_patch, n) bag_prediction (1,n)
-        logit_instance = self.instance_classifier(feat_instance)
-        # logit_bag: 1 x num_class, instance_logit_stream1: #instances x num_class, logit_instance: #instances (x num_class) x ic_dim_out(=V) (x args.ic_num_head)
-        return {'bag': logit_bag, 'instance_stream1': instance_logit_stream1.unsqueeze(0), 'instance': logit_instance}
+        if self.args.train_instance != 'None':
+            logit_instance = self.instance_classifier(feat_instance)
+            # logit_bag: 1 x num_class, instance_logit_stream1: #instances x num_class, logit_instance: #instances (x num_class) x ic_dim_out(=V) (x args.ic_num_head)
+            return {'bag': logit_bag, 'instance_stream1': instance_logit_stream1.unsqueeze(0), 'instance': logit_instance}
+        else:
+            return {'bag': logit_bag, 'instance_stream1': instance_logit_stream1.unsqueeze(0)}
     
     def calculate_objective(self, X, Y):
         logit_dict = self.forward(X)

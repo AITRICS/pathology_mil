@@ -195,9 +195,12 @@ class Dtfd(MilBase):
         feat_pseudo_bag, logit_pseudo_bag, feat_instances = self.first_tier(x) ### numGroup x fs  ,   numGroup x cls
 
         logit_bag = self.UClassifier(feat_pseudo_bag)
-        logit_instances = self.instance_classifier(feat_instances)
-        
-        return {'bag': logit_bag, 'pseudo_bag': logit_pseudo_bag, 'instance': logit_instances}
+
+        if self.args.train_instance != 'None':
+            logit_instances = self.instance_classifier(feat_instances)        
+            return {'bag': logit_bag, 'pseudo_bag': logit_pseudo_bag, 'instance': logit_instances}
+        else:       
+            return {'bag': logit_bag, 'pseudo_bag': logit_pseudo_bag}
                
 
     def calculate_objective(self, X, Y):
