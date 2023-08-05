@@ -401,11 +401,11 @@ class MilBase(nn.Module):
             # print(f'cosine loss: {self.args.weight_agree * torch.mean(p @ _negative_centroid)}')
             # print(f'center location: {self.negative_centroid[:5]}')
         elif target == 1:
-            # loss += self.args.weight_disagree * torch.sum(torch.bmm(F.normalize(p_t, dim=2, eps=1e-8), F.normalize(p, dim=1, eps=1e-8)) * self.mask_diag)/(ls*hn*(hn-1.0))
+            loss += self.args.weight_disagree * torch.sum(torch.bmm(F.normalize(p_t, dim=2, eps=1e-8), F.normalize(p, dim=1, eps=1e-8)) * self.mask_diag)/(ls*hn*(hn-1.0))
             # print(f'variance: {self.args.weight_disagree * torch.sum(torch.bmm(F.normalize(p_t, dim=2, eps=1e-8), F.normalize(p, dim=1, eps=1e-8)) * self.mask_diag)/(ls*hn*(hn-1.0))}')
             # print(f'max variance: {torch.amax(F.normalize(p, dim=1, eps=1e-8).var(dim=2))}')
 
-            return loss
+        return loss
 
     def off_diagonal(self, x):
         n, m = x.shape
