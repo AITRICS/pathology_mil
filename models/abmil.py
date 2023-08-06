@@ -72,7 +72,7 @@ class Attention(MilBase):
             logit_instances = self.instance_classifier(H.squeeze(0))      
             return {'bag': logit_bag, 'instance': logit_instances}
         else:       
-            return {'bag': logit_bag, 'instance': None}
+            return {'bag': logit_bag}
     
 
     # # AUXILIARY METHODS
@@ -173,7 +173,7 @@ class GatedAttention(MilBase):
             logit_instances = self.instance_classifier(H.squeeze(0))      
             return {'bag': logit_bag, 'instance': logit_instances}
         else:       
-            return {'bag': logit_bag, 'instance': None}
+            return {'bag': logit_bag}
         
 
     # # AUXILIARY METHODS
