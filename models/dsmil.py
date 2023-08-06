@@ -98,10 +98,10 @@ class Dsmil(MilBase):
 
         if args.train_instance == 'None':
             self.optimizer['mil_model'] = torch.optim.Adam(list(self.i_classifier.parameters())+list(self.b_classifier.parameters())+
-                                                            list(self.milnet.parameters()), lr=args.lr, betas=(0.5, 0.9), weight_decay=0.005)        
+                                                            list(self.milnet.parameters()), lr=args.lr, betas=(0.5, 0.9), weight_decay=0.005)
         else:
             self.optimizer['mil_model'] = torch.optim.Adam(list(self.i_classifier.parameters())+list(self.b_classifier.parameters())+
-                                                            list(self.milnet.parameters())+list(self.instance_classifier.parameters()), lr=args.lr,  weight_decay=1e-4)
+                                                            list(self.milnet.parameters())+list(self.instance_classifier.parameters()), lr=args.lr, betas=(0.5, 0.9), weight_decay=0.005)
 
         # self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, self.args.num_epochs, 0.000005)
         self.scheduler['mil_model'] = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer['mil_model'], self.args.epochs*self.args.num_step, 0.000005)
