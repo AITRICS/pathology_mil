@@ -83,8 +83,9 @@ class MilBase(nn.Module):
         self.args = args
         self.optimizer = {}
         self.scheduler = {}
-<<<<<<< Updated upstream:models/milbase.py
         self.ma_dim_in = ma_dim_in
+        self.alpha = args.alpha
+        self.beta = args.beta
         
         if 'instance' in args.train_instance:
             if args.ic_depth == 0:
@@ -94,17 +95,7 @@ class MilBase(nn.Module):
                 ic_dim_out = 128
         else:
             ic_dim_out = args.num_classes
-=======
-        
-        # arguments for pseudo label weighting
-        self.T1 = args.T1
-        self.T2 = args.T2
-        self.af = args.af
 
-        if args.ic_depth == 0:
-            assert args.ic_num_head == 1
-            assert ic_dim_in == ic_dim_out
->>>>>>> Stashed changes:models/mil.py
 
         if criterion is not None:
             self.criterion_bag = criterion
@@ -195,7 +186,7 @@ class MilBase(nn.Module):
             return loss_bag + loss_instance
             
 
-    def update(self, X, Y):
+    def update(self, X, Y, epoch):
         """
         X: #bags x #instances x #dims => encoded patches
         Y: #bags x #classes  ==========> slide-level label
@@ -234,20 +225,30 @@ class MilBase(nn.Module):
             loss: scalar
         """
         pseudo_threshold = 0.5
+        n_instances = p.size(0)
         if target == 0:
-            return self.criterion(p, torch.zeros_like(p, device=p.get_device()))
+            return self.criterion(p.sigmoid(), torch.zeros_like(p, device=p.get_device()))
         elif target == 1:
             # pseudo labeling
             with torch.no_grad():
-                pseudo_prob = p.sigmoid().unsqueeze(-1)
-                pseudo_labeled = (pseudo_prob >= pseudo_threshold).type(torch.LongTensor)
+                pseudo_prob = p.sigmoid()
+                computed_instances_labels = torch.zeros(pseudo_prob.shape, device=p.get_device()).float()
+                mask_instances_labels = torch.zeros(pseudo_prob.shape, device=p.get_device()).float()
+                
+                _, topk_idx = torch.topk(pseudo_prob, k=int(self.alpha*n_instances), dim=0)
+                computed_instances_labels[topk_idx] = 1.
+                mask_instances_labels[topk_idx] = 1.
+                if self.beta > 0.:
+                    _, bottomk_idx = torch.topk(pseudo_prob, k=int(self.beta*n_instances), largest=False, dim=0)
+                    computed_instances_labels[bottomk_idx] = 0.
+                    mask_instances_labels[bottomk_idx] = 1.
             
             # calculate pseudo labeled loss
-            pl_loss = self.criterion(p, pseudo_labeled)
+            pl_loss = (self.criterion(pseudo_prob, computed_instances_labels) * mask_instances_labels).sum() / mask_instances_labels.sum()
             
-            # weighting labeled loss
-            pl_loss = self.unlabeled_weight()*pl_loss
-                
+            # weighting labeled loss            
+            # pl_loss = self.unlabeled_weight()*pl_loss
+                            
             return pl_loss
 
     def semisup2(self, p: torch.Tensor, target=0):

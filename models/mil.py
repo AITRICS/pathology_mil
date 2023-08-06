@@ -174,7 +174,7 @@ class MilBase(nn.Module):
             loss_instance = getattr(self, self.args.train_instance)(logit_dict['logit_instance'])
             return loss_bag + loss_instance
 
-    def update(self, X, Y):
+    def update(self, X, Y, epoch):
         """
         X: #bags x #instances x #dims => encoded patches
         Y: #bags x #classes  ==========> slide-level label

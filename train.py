@@ -60,6 +60,8 @@ parser.add_argument('--lr-center', default=0.001, type=float, help='initial lear
 parser.add_argument('--mil-model', default='Dtfd', type=str, help='use pre-training method')
 
 parser.add_argument('--pushtoken', default=False, help='Push Bullet token')
+parser.add_argument('--alpha', default=0.1, type=float, help='ratio for pseudo positive sample')
+parser.add_argument('--beta', default=0, type=float, help='ratio for pseudo negative sample')
 
 def run_fold(args, fold, txt_name) -> Tuple:
 
@@ -81,8 +83,10 @@ def run_fold(args, fold, txt_name) -> Tuple:
     auc_best = 0.0
     epoch_best = 0
     file_name = f'{txt_name}_lr{args.lr}_fold{fold}.pth'
+    
+    print(args.train_instance)
     for epoch in trange(1, (args.epochs+1)):        
-        train(loader_train, model)
+        train(loader_train, model, epoch)
         auc, acc = validate(loader_val, model, args)
         if np.mean(auc) > auc_best:
             epoch_best = epoch
@@ -109,7 +113,7 @@ def run_fold(args, fold, txt_name) -> Tuple:
     
     return auc_test, acc_test, auc_val, acc_val, auc_tr, acc_tr, dataset_test.category_idx, epoch_best
 
-def train(train_loader, model):
+def train(train_loader, model, epoch):
     model.train()
     for i, (images, target) in enumerate(train_loader):
         # images --> #bags x #instances x #dims
@@ -117,7 +121,7 @@ def train(train_loader, model):
         # target --> #bags x #classes
         target = target.type(torch.FloatTensor).cuda(args.device, non_blocking=True)
 
-        model.update(images, target)
+        model.update(images, target, epoch)
 
 def validate(val_loader, model, args):
     bag_labels = []
