@@ -38,10 +38,13 @@ class Attention(MilBase):
         self.classifier = nn.Sequential(
             nn.Linear(self.L, args.num_classes)
         )
-        
-        self.optimizer['mil_model'] = optim.Adam(list(self.encoder.parameters())+list(self.attention.parameters())+list(self.classifier.parameters())+
-                                    list(self.instance_classifier.parameters()), lr=args.lr, betas=(0.9, 0.999), weight_decay=10e-5)
-
+                    
+        if args.train_instance == 'None':
+            self.optimizer['mil_model'] = optim.Adam(list(self.encoder.parameters())+list(self.attention.parameters())+list(self.classifier.parameters()),
+                                                     lr=args.lr, betas=(0.9, 0.999), weight_decay=10e-5)
+        else:
+            self.optimizer['mil_model'] = optim.Adam(list(self.encoder.parameters())+list(self.attention.parameters())+list(self.classifier.parameters())
+                                                     +list(self.instance_classifier.parameters()), lr=args.lr, betas=(0.9, 0.999), weight_decay=10e-5)
 
     def forward(self, x):
         # INPUT: #bags x #instances x #dims
@@ -129,11 +132,16 @@ class GatedAttention(MilBase):
             nn.Linear(self.L, args.num_classes),
             # nn.Sigmoid()
         )
-    
-        self.optimizer['mil_model'] = optim.Adam(list(self.encoder.parameters())+list(self.attention_V.parameters())+list(self.attention_U.parameters())
+            
+        if args.train_instance == 'None':
+            self.optimizer['mil_model'] = optim.Adam(list(self.encoder.parameters())+list(self.attention_V.parameters())+list(self.attention_U.parameters())
+                                                +list(self.attention_weights.parameters())+list(self.classifier.parameters()),
+                                                 lr=args.lr, betas=(0.9, 0.999), weight_decay=10e-5)
+        else:
+            self.optimizer['mil_model'] = optim.Adam(list(self.encoder.parameters())+list(self.attention_V.parameters())+list(self.attention_U.parameters())
                                                 +list(self.attention_weights.parameters())+list(self.classifier.parameters())+list(self.instance_classifier.parameters()),
                                                  lr=args.lr, betas=(0.9, 0.999), weight_decay=10e-5)
-                
+            
     def forward(self, x):
         # INPUT: #bags x #instances x #dims
         # OUTPUT: #bags x #classes

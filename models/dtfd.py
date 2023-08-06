@@ -139,7 +139,6 @@ class Dtfd(MilBase):
         self.device = args.device
         self.sigmoid = nn.Sigmoid()
         
-        # update
         if args.train_instance == 'None':
             self.optimizer['mil_model'] = torch.optim.Adam(list(self.classifier.parameters())+list(self.attention.parameters())+
                                                             list(self.dimReduction.parameters())+list(self.UClassifier.parameters()),
