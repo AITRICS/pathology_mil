@@ -66,10 +66,14 @@ class Attention(MilBase):
         M = torch.matmul(A, H)  # BxKxL
 
         logit_bag = self.classifier(M).squeeze(2) # BxK        
-        # Y_hat = torch.sign(F.relu(Y_logit)).float()
-
-        logit_instances = self.instance_classifier(H.squeeze(0))
-        return {'bag': logit_bag, 'instance': logit_instances}
+        # Y_hat = torch.sign(F.relu(Y_logit)).float()       
+        
+        if self.args.train_instance != 'None':
+            logit_instances = self.instance_classifier(H.squeeze(0))      
+            return {'bag': logit_bag, 'instance': logit_instances}
+        else:       
+            return {'bag': logit_bag, 'instance': None}
+    
 
     # # AUXILIARY METHODS
     # def calculate_classification_error(self, X, Y):
@@ -165,9 +169,12 @@ class GatedAttention(MilBase):
         logit_bag = self.classifier(M).squeeze(2) # BxK
         # Y_hat = torch.sign(F.relu(Y_logit)).float()
 
+        if self.args.train_instance != 'None':
+            logit_instances = self.instance_classifier(H.squeeze(0))      
+            return {'bag': logit_bag, 'instance': logit_instances}
+        else:       
+            return {'bag': logit_bag, 'instance': None}
         
-        logit_instances = self.instance_classifier(H.squeeze(0))
-        return {'bag': logit_bag, 'instance': logit_instances}
 
     # # AUXILIARY METHODS
     # def calculate_classification_error(self, X, Y):
