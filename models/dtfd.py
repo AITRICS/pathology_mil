@@ -140,9 +140,15 @@ class Dtfd(MilBase):
         self.sigmoid = nn.Sigmoid()
         
         # update
-        self.optimizer['mil_model'] = torch.optim.Adam(list(self.classifier.parameters())+list(self.attention.parameters())+
-                                                       list(self.dimReduction.parameters())+list(self.UClassifier.parameters())+
-                                                       list(self.instance_classifier.parameters()), lr=args.lr,  weight_decay=1e-4)
+        if args.train_instance == 'None':
+            self.optimizer['mil_model'] = torch.optim.Adam(list(self.classifier.parameters())+list(self.attention.parameters())+
+                                                            list(self.dimReduction.parameters())+list(self.UClassifier.parameters()),
+                                                            lr=args.lr,  weight_decay=1e-4)
+
+        else:
+            self.optimizer['mil_model'] = torch.optim.Adam(list(self.classifier.parameters())+list(self.attention.parameters())+
+                                                            list(self.dimReduction.parameters())+list(self.UClassifier.parameters())+
+                                                            list(self.instance_classifier.parameters()), lr=args.lr,  weight_decay=1e-4)
                 
         self.scheduler['mil_model'] = torch.optim.lr_scheduler.MultiStepLR(self.optimizer['mil_model'], '[100]', gamma=0.2)
         
