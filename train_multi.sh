@@ -10,5 +10,5 @@ dataset=CAMELYON16
 process_num=4
 workers=4
 
-CUDA_VISIBLE_DEVICES=$gpu nohup python train.py --data-root $data_root --scheduler-centroid $scheduler_centroid --dataset $dataset --optimizer-nc $optimizer_nc --process-num $process_num \
-                                                --workers $workers --pushtoken o.OsyxHt1pZuwUBoMEFYBuzHFNjV5ekr95 > LR_${lr_downstream}_milmodel_${milmodel}_gpu_${gpu}.txt &
+CUDA_VISIBLE_DEVICES=$gpu nohup python train.py --data-root $data_root --dataset $dataset --process-num $process_num --workers $workers \
+                                                --pushtoken o.OsyxHt1pZuwUBoMEFYBuzHFNjV5ekr95 > LR_${lr_downstream}_milmodel_${milmodel}_gpu_${gpu}.txt &
