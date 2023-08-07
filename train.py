@@ -44,7 +44,7 @@ parser.add_argument('--batch-size', default=1, type=int, metavar='N', help='the 
 parser.add_argument('--seed', default=1, type=int, help='seed for initializing training. ')
 
 parser.add_argument('--dataset', default='CAMELYON16', choices=['CAMELYON16', 'tcga_lung', 'tcga_stad'], type=str, help='dataset type')
-parser.add_argument('--train-instance', default='intrainstance_vc', choices=['None', 'semisup1', 'semisup2', 'intrainstance_divdis',
+parser.add_argument('--train-instance', default='None', choices=['None', 'semisup1', 'semisup2', 'intrainstance_divdis',
                                                                                 'interinstance_vc','interinstance_cosine', 'intrainstance_vc',
                                                                                 'intrainstance_cosine'], type=str, help='instance loss type')
 parser.add_argument('--ic-num-head', default=5, type=int, help='# of projection head for each instance token')
@@ -57,7 +57,7 @@ parser.add_argument('--optimizer-nc', default='sgd', choices=['sgd', 'adam', 'ad
 parser.add_argument('--lr', default=0.003, type=float, metavar='LR', help='initial learning rate', dest='lr')
 # parser.add_argument('--lr-aux', default=0.001, type=float, help='initial learning rate')
 parser.add_argument('--lr-center', default=0.001, type=float, help='initial learning rate')
-parser.add_argument('--mil-model', default='Dtfd', type=str, help='use pre-training method')
+parser.add_argument('--mil-model', default='Dsmil', type=str, help='use pre-training method')
 
 parser.add_argument('--pushtoken', default=False, help='Push Bullet token')
 parser.add_argument('--alpha', default=0.1, type=float, help='ratio for pseudo positive sample')
@@ -83,8 +83,6 @@ def run_fold(args, fold, txt_name) -> Tuple:
     auc_best = 0.0
     epoch_best = 0
     file_name = f'{txt_name}_lr{args.lr}_fold{fold}.pth'
-    
-    print(args.train_instance)
     for epoch in trange(1, (args.epochs+1)):        
         train(loader_train, model, epoch)
         auc, acc = validate(loader_val, model, args)
@@ -166,7 +164,8 @@ if __name__ == '__main__':
     acc_fold_test = []
     auc_fold_test = []
 
-    args.num_classes=2 if args.dataset=='tcga_lung' else 1
+    # args.num_classes=2 if args.dataset=='tcga_lung' else 1
+    args.num_classes=1
     args.device = 0
 
     if args.mil_model == 'Dtfd':

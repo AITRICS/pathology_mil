@@ -41,11 +41,15 @@ class BClassifier(nn.Module):
             )
         else:
             self.v = nn.Identity()
-        
+
+        self.input_size = input_size
+        self.output_class = output_class
+
         ### 1D convolutional layer that can handle multiple class (including binary)
         self.fcc = nn.Conv1d(output_class, output_class, kernel_size=input_size)  
         
-    def forward(self, feats, c): # N x K, N x C
+    def forward(self, feats, c): # N x K, N x C, N = # of instances
+        num_instance = feats.shape[0]
         device = feats.device
         V = self.v(feats) # N x V, unsorted
         Q = self.q(feats).view(feats.shape[0], -1) # N x Q, unsorted
@@ -61,7 +65,11 @@ class BClassifier(nn.Module):
         B = B.view(1, B.shape[0], B.shape[1]) # 1 x C x V
         C = self.fcc(B) # 1 x C x 1
         C = C.view(1, -1) # 1 x C
-        return C, A, B
+
+        A_expand = A.unsqueeze(2).expand(-1, -1, self.input_size) # N C --> N C 1 --> N C V
+        V_expand = V.unsqueeze(1).expand(-1, self.output_class, -1) # N V --> N 1 V --> N C V
+
+        return C, A, B, (A_expand*V_expand).squeeze(1)
     
 class MILNet(nn.Module):
     def __init__(self, i_classifier, b_classifier):
@@ -70,41 +78,53 @@ class MILNet(nn.Module):
         self.b_classifier = b_classifier
         
     def forward(self, x):
-        feats, classes = self.i_classifier(x)
-        prediction_bag, A, B = self.b_classifier(feats, classes)
+        feats, instance_logit_stream1 = self.i_classifier(x)
+        prediction_bag, A, B, feat_instance = self.b_classifier(feats, instance_logit_stream1)
         
-        return classes, prediction_bag, A, B
+        return instance_logit_stream1, prediction_bag, A, B, feat_instance
         
-        # args=args, optimizer=None, criterion=None, scheduler=None, dim_in=dim_in, dim_latent=512, dim_out=args.num_classes
+# args=args, optimizer=None, criterion=None, scheduler=None, dim_in=dim_in, dim_latent=512, dim_out=args.num_classes
 class Dsmil(MilBase):
-    def __init__(self, encoder=None, **kwargs):
-        super().__init__(**kwargs)
-        
+    def __init__(self, args, ma_dim_in):
+        super().__init__(args=args, ma_dim_in=ma_dim_in, ic_dim_in=ma_dim_in)
+        self.args=args
+        self.dim_in=2048
+        self.dim_out=1
         self.i_classifier = FCLayer(in_size=self.dim_in, out_size=self.dim_out)
         self.b_classifier = BClassifier(input_size=self.dim_in, output_class=self.dim_out)
         self.milnet = MILNet(self.i_classifier, self.b_classifier)
-
-        self.optimizer = torch.optim.Adam(self.parameters(), lr=self.args.lr, betas=(0.5, 0.9), weight_decay=0.005)
+        self.criterion = nn.BCEWithLogitsLoss() 
+        self.optimizer={}
+        self.scheduler={}
+        self.optimizer['mil_model'] = torch.optim.Adam(list(self.i_classifier.parameters())+list(self.b_classifier.parameters())+list(self.milnet.parameters()), lr=args.lr, betas=(0.5, 0.9), weight_decay=0.005)
         # self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, self.args.num_epochs, 0.000005)
-        self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, self.args.epochs*self.args.num_step, 0.000005)
+        self.scheduler['mil_model'] = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer['mil_model'], self.args.epochs*self.args.num_step, 0.000005)
         
     def forward(self, x: torch.Tensor):
         dsmil_input = x.squeeze(0)
         # logit_instance: #instance x self.dim_out
         # logit_bag: 1 x self.dim_out
-        logit_instance, logit_bag, _, _ = self.milnet(dsmil_input) # ins_prediction (num_patch, n) bag_prediction (1,n)        
-        return logit_bag, logit_instance.unsqueeze(0)
-        # average 해야함
+        instance_logit_stream1, logit_bag, _, _, feat_instance = self.milnet(dsmil_input) # ins_prediction (num_patch, n) bag_prediction (1,n)
+        if self.args.train_instance != 'None':
+            logit_instance = self.instance_classifier(feat_instance)
+            # logit_bag: 1 x num_class, instance_logit_stream1: #instances x num_class, logit_instance: #instances (x num_class) x ic_dim_out(=V) (x args.ic_num_head)
+            return {'bag': logit_bag, 'instance_stream1': instance_logit_stream1.unsqueeze(0), 'instance': logit_instance}
+        else:
+            return {'bag': logit_bag, 'instance_stream1': instance_logit_stream1.unsqueeze(0)}
     
     def calculate_objective(self, X, Y):
-        logit_bag, logit_instance = self.forward(X)
-        max_logit_instance, _ = torch.max(logit_instance, 1)        # (1,n)
-        bag_loss = self.criterion(logit_bag.view(1, -1), Y.view(1, -1)) # num class n : BCE([1,n],[1,n]), BCEWithLogitsLoss()
-        max_loss = self.criterion(max_logit_instance.view(1, -1), Y.view(1, -1))
-        
-        return 0.5*bag_loss + 0.5*max_loss
+        logit_dict = self.forward(X)
+        max_logit_instance, _ = torch.max(logit_dict['instance_stream1'], 1)        # (1,n)
+        bag_loss = self.criterion_bag(logit_dict['bag'].view(1, -1), Y.view(1, -1)) # num class n : BCE([1,n],[1,n]), BCEWithLogitsLoss()
+        max_loss = self.criterion_bag(max_logit_instance.view(1, -1), Y.view(1, -1))
+            
+        if self.args.train_instance == 'None':
+            return 0.5*bag_loss + 0.5*max_loss
+        else:
+            loss_instance = getattr(self, self.args.train_instance)(logit_dict['instance'], int(Y[0, 0]))
+            return 0.5*bag_loss + 0.5*max_loss + loss_instance
     
     def infer(self, x: torch.Tensor):
-        logit_bag, logit_instance = self.forward(x)
-        max_logit_instance, _ = torch.max(logit_instance, 1)        # (1,n)
-        return 0.5*torch.sigmoid(max_logit_instance)+0.5*torch.sigmoid(logit_bag), None
+        logit_dict = self.forward(x)
+        max_logit_instance, _ = torch.max(logit_dict['instance_stream1'], 1)        # (1,n)
+        return 0.5*torch.sigmoid(max_logit_instance)+0.5*torch.sigmoid(logit_dict['bag']), None

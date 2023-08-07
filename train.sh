@@ -1,10 +1,10 @@
 ## ic --> instance classifier
 ## nc --> negative centroid
 
-gpu=5
+gpu=6
 data_root=/mnt/aitrics_ext/ext01/shared/camelyon16_eosin_224_16_pkl_0524/swav_res50
 # single도 해볼 수 있음
-scheduler_centroid=None
+scheduler_centroid=single
 dataset=CAMELYON16
 # None, intrainstance_divdis, interinstance_vc, interinstance_cosine, intrainstance_vc, intrainstance_cosine, semisup1
 train_instance=semisup1 
@@ -18,15 +18,16 @@ weight_disagree=1.0
 weight_cov=1.0
 stddev_disagree=1.0
 # negative centroid 업데이트 방법: sgd, adamw, adam
-optimizer_nc=sgd
+optimizer_nc=adamw
 lr=0.003
 lr_center=0.0001
 # Dtfd, Attention, GatedAttention 가능
-mil_model=Dtfd
+mil_model=Dsmil
 alpha=0.1
 beta=0
 
 # 이렇게 하면 8개 돔. gpu 0부터 시작
+
     # for lr in 0.01 0.003 0.001 0.0003; do
 # for lr in 0.01 0.003; do
 

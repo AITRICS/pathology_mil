@@ -96,19 +96,19 @@ class MilBase(nn.Module):
         else:
             ic_dim_out = args.num_classes
 
-
         if criterion is not None:
             self.criterion_bag = criterion
         else:
             self.criterion_bag = nn.BCEWithLogitsLoss()        
         self.sigmoid = nn.Sigmoid()
 
-        self.instance_classifier = Classifier_instance(dim_in=ic_dim_in, dim_out=ic_dim_out, layer_depth=args.ic_depth, num_head=args.ic_num_head)
+        if args.train_instance != 'None':
+            self.instance_classifier = Classifier_instance(dim_in=ic_dim_in, dim_out=ic_dim_out, layer_depth=args.ic_depth, num_head=args.ic_num_head)
+            # self.set_negative_centroid(args=args, dim_negative_centroid=ic_dim_out)
        
         if args.train_instance=='intrainstance_cosine':
             self.mask_diag = 1.0-torch.eye(args.ic_num_head, requires_grad=False).unsqueeze(0).cuda()
-
-        self.set_negative_centroid(args=args, dim_negative_centroid=ic_dim_out)
+        
 
     def set_negative_centroid(self, args, dim_negative_centroid):
 
@@ -173,6 +173,9 @@ class MilBase(nn.Module):
 
         <OUTPUT>
         loss: scalar
+
+        <설명>
+        logit_dict['bag']: 
         """
 
         logit_dict = self.forward(X)
@@ -371,18 +374,18 @@ class MilBase(nn.Module):
         
         cov = (p_whiten_merged.T @ p_whiten_merged) / ((ls*hn) - 1.0)
         loss = self.args.weight_cov*(self.off_diagonal(cov).pow_(2).sum().div(fs)) # covariance loss
-        print(f'==================================')
-        print(f'cov: {self.args.weight_cov*(self.off_diagonal(cov).pow_(2).sum().div(fs))}')
+        # print(f'==================================')
+        # print(f'cov: {self.args.weight_cov*(self.off_diagonal(cov).pow_(2).sum().div(fs))}')
         if target == 0:
             _negative_centroid = self.negative_centroid.expand(ls*hn, fs) # _negative_centroid : (Length_sequence x Head_num) x fs 
             loss += self.args.weight_agree * torch.mean(torch.sqrt((p_whiten_merged - _negative_centroid).var(dim=0, keepdim=False) + 0.00001))
-            print(f'var_neg: {self.args.weight_agree * torch.mean(torch.sqrt((p_whiten_merged - _negative_centroid).var(dim=0, keepdim=False) + 0.00001))}')
-            print(f'negative center location: {self.negative_centroid[0,:5]}')
+            # print(f'var_neg: {self.args.weight_agree * torch.mean(torch.sqrt((p_whiten_merged - _negative_centroid).var(dim=0, keepdim=False) + 0.00001))}')
+            # print(f'negative center location: {self.negative_centroid[0,:5]}')
             
         elif target == 1:
             loss += self.args.weight_disagree * torch.mean(F.relu(self.args.stddev_disagree - torch.sqrt(p_whiten_head.var(dim=2) + 0.00001))) # standard deviation
-            print(f'variance: {self.args.weight_disagree * torch.mean(F.relu(self.args.stddev_disagree - torch.sqrt(p_whiten_head.var(dim=2) + 0.00001)))}')
-            print(f'max variance: {torch.amax(p_whiten_head.var(dim=2))}')
+            # print(f'variance: {self.args.weight_disagree * torch.mean(F.relu(self.args.stddev_disagree - torch.sqrt(p_whiten_head.var(dim=2) + 0.00001)))}')
+            # print(f'max variance: {torch.amax(p_whiten_head.var(dim=2))}')
         # print(f'weight: {[f[0].weight[0,0].item() for f in self.instance_classifier.fc]}')
         return loss
 
@@ -401,18 +404,18 @@ class MilBase(nn.Module):
         p_whiten_merged = F.normalize(p_whiten_merged, dim=1, eps=1e-8)
         cov = (p_whiten_merged.T @ p_whiten_merged) / ((ls*hn) - 1.0)
         loss = self.args.weight_cov*(self.off_diagonal(cov).pow_(2).sum().div(fs)) # covariance loss
-        print(f'==================================')
-        print(f'cov: {self.args.weight_cov*(self.off_diagonal(cov).pow_(2).sum().div(fs))}')
+        # print(f'==================================')
+        # print(f'cov: {self.args.weight_cov*(self.off_diagonal(cov).pow_(2).sum().div(fs))}')
 
         if target == 0:
             _negative_centroid = F.normalize(self.negative_centroid, dim=0, eps=1e-8) # _negative_centroid : fs
             p = F.normalize(p_t, dim=2, eps=1e-8) # p: Length_sequence x Head_num x fs
             loss -= self.args.weight_agree * torch.mean(p @ _negative_centroid) # Length_sequence x Head_num
-            print(f'cosine loss: {self.args.weight_agree * torch.mean(p @ _negative_centroid)}')
-            print(f'center location: {self.negative_centroid[:5]}')
+            # print(f'cosine loss: {self.args.weight_agree * torch.mean(p @ _negative_centroid)}')
+            # print(f'center location: {self.negative_centroid[:5]}')
         elif target == 1:
             loss += self.args.weight_disagree * torch.sum(torch.bmm(F.normalize(p_t, dim=2, eps=1e-8), F.normalize(p, dim=1, eps=1e-8)) * self.mask_diag)/(ls*hn*(hn-1.0))
-            print(f'variance: {self.args.weight_disagree * torch.sum(torch.bmm(F.normalize(p_t, dim=2, eps=1e-8), F.normalize(p, dim=1, eps=1e-8)) * self.mask_diag)/(ls*hn*(hn-1.0))}')
+            # print(f'variance: {self.args.weight_disagree * torch.sum(torch.bmm(F.normalize(p_t, dim=2, eps=1e-8), F.normalize(p, dim=1, eps=1e-8)) * self.mask_diag)/(ls*hn*(hn-1.0))}')
             # print(f'max variance: {torch.amax(F.normalize(p, dim=1, eps=1e-8).var(dim=2))}')
 
         return loss

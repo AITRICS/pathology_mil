@@ -140,9 +140,15 @@ class Dtfd(MilBase):
         self.sigmoid = nn.Sigmoid()
         
         # update
-        self.optimizer['mil_model'] = torch.optim.Adam(list(self.classifier.parameters())+list(self.attention.parameters())+
-                                                       list(self.dimReduction.parameters())+list(self.UClassifier.parameters())+
-                                                       list(self.instance_classifier.parameters()), lr=args.lr,  weight_decay=1e-4)
+        if args.train_instance == 'None':
+            self.optimizer['mil_model'] = torch.optim.Adam(list(self.classifier.parameters())+list(self.attention.parameters())+
+                                                            list(self.dimReduction.parameters())+list(self.UClassifier.parameters()),
+                                                            lr=args.lr,  weight_decay=1e-4)
+
+        else:
+            self.optimizer['mil_model'] = torch.optim.Adam(list(self.classifier.parameters())+list(self.attention.parameters())+
+                                                            list(self.dimReduction.parameters())+list(self.UClassifier.parameters())+
+                                                            list(self.instance_classifier.parameters()), lr=args.lr,  weight_decay=1e-4)
                 
         self.scheduler['mil_model'] = torch.optim.lr_scheduler.MultiStepLR(self.optimizer['mil_model'], '[100]', gamma=0.2)
         
@@ -195,9 +201,12 @@ class Dtfd(MilBase):
         feat_pseudo_bag, logit_pseudo_bag, feat_instances = self.first_tier(x) ### numGroup x fs  ,   numGroup x cls
 
         logit_bag = self.UClassifier(feat_pseudo_bag)
-        logit_instances = self.instance_classifier(feat_instances)
-        
-        return {'bag': logit_bag, 'pseudo_bag': logit_pseudo_bag, 'instance': logit_instances}
+
+        if self.args.train_instance != 'None':
+            logit_instances = self.instance_classifier(feat_instances)        
+            return {'bag': logit_bag, 'pseudo_bag': logit_pseudo_bag, 'instance': logit_instances}
+        else:       
+            return {'bag': logit_bag, 'pseudo_bag': logit_pseudo_bag}
                
 
     def calculate_objective(self, X, Y):
