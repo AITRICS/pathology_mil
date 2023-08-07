@@ -52,9 +52,9 @@ parser.add_argument('--ic-num-head', default=5, type=int, help='# of projection 
 parser.add_argument('--ic-depth', default=2, choices=[0,1,2], type=int, help='layer number of projection head for instance tokens')
 parser.add_argument('--weight-agree', default=1.0, type=float, help='weight for the agree loss, eg, center, cosine')
 parser.add_argument('--weight-disagree', default=1.0, type=float, help='weight for the disagree loss, eg, variance loss, contrastive')
-parser.add_argument('--weight-cov', default=1.0, type=float, help='weight for the covariance loss')
+parser.add_argument('--weight-cov', default=0.0, type=float, help='weight for the covariance loss')
 parser.add_argument('--stddev-disagree', default=1.0, type=float, help='std dev threshold for disagree loss')
-parser.add_argument('--optimizer-nc', default='sgd', choices=['sgd', 'adam', 'adamw'], type=str, help='optimizer for negative centroid')
+parser.add_argument('--optimizer-nc', default='adamw', choices=['sgd', 'adam', 'adamw'], type=str, help='optimizer for negative centroid')
 parser.add_argument('--lr', default=0.003, type=float, metavar='LR', help='initial learning rate', dest='lr')
 # parser.add_argument('--lr-aux', default=0.001, type=float, help='initial learning rate')
 parser.add_argument('--lr-center', default=0.001, type=float, help='initial learning rate')
@@ -199,7 +199,9 @@ if __name__ == '__main__':
     args_list = [parser.parse_args()]*args_common.process_num
 
     ################################### 여길 바꿔 ####################################
+    # None, intrainstance_divdis, interinstance_vc, interinstance_cosine, intrainstance_vc, intrainstance_cosine
     _train_instance = ['None']*4
+    # OURS와 divdis를 제외하면 ic_num_head는 1 이어야 함
     _ic_num_head = [5]*4
     _ic_depth = [2]*4
     _weight_agree = [1.0]*4
