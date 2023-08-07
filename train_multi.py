@@ -60,63 +60,63 @@ parser.add_argument('--lr', default=0.003, type=float, metavar='LR', help='initi
 parser.add_argument('--lr-center', default=0.001, type=float, help='initial learning rate')
 parser.add_argument('--mil-model', default='Dsmil', type=str, help='use pre-training method')
 
-parser.add_argument('--process-num', default=8, type=int, help='number of threads')
+parser.add_argument('--process-num', default=2, type=int, help='number of threads')
 
 parser.add_argument('--pushtoken', default=False, help='Push Bullet token')
 
 def run_fold(args_list, fold, txt_name) -> Tuple:
 
-    random.seed(args_list.seed)
-    torch.manual_seed(args_list.seed)
-    torch.cuda.manual_seed_all(args_list.seed)
+    random.seed(args_list[0].seed)
+    torch.manual_seed(args_list[0].seed)
+    torch.cuda.manual_seed_all(args_list[0].seed)
     torch.backends.cudnn.benchmark = True
     # cudnn.deterministic = True
 
-    dataset_train = Dataset_pkl(path_pretrained_pkl_root=args_list.data_root, fold_now=fold, fold_all=args.fold, shuffle_slide=True, shuffle_patch=True, split='train', num_classes=args_list.num_classes, seed=args_list.seed)
-    loader_train = torch.utils.data.DataLoader(dataset_train, batch_size=args.batch_size, shuffle=True, num_workers=args.workers, pin_memory=True)
-    args.num_step = len(loader_train)
+    dataset_train = Dataset_pkl(path_pretrained_pkl_root=args_list[0].data_root, fold_now=fold, fold_all=args_list[0].fold, shuffle_slide=True, shuffle_patch=True, split='train', num_classes=args_list[0].num_classes, seed=args_list[0].seed)
+    loader_train = torch.utils.data.DataLoader(dataset_train, batch_size=args_list[0].batch_size, shuffle=True, num_workers=args_list[0].workers, pin_memory=True)
+    args_list[0].num_step = len(loader_train)
 
-    dataset_val = Dataset_pkl(path_pretrained_pkl_root=args.data_root, fold_now=fold, fold_all=args.fold, shuffle_slide=True, shuffle_patch=True, split='val', num_classes=args_list.num_classes, seed=args_list.seed)
-    loader_val = torch.utils.data.DataLoader(dataset_val, batch_size=args.batch_size, shuffle=False, num_workers=args.workers, pin_memory=True)
+    dataset_val = Dataset_pkl(path_pretrained_pkl_root=args_list[0].data_root, fold_now=fold, fold_all=args_list[0].fold, shuffle_slide=True, shuffle_patch=True, split='val', num_classes=args_list[0].num_classes, seed=args_list[0].seed)
+    loader_val = torch.utils.data.DataLoader(dataset_val, batch_size=args_list[0].batch_size, shuffle=False, num_workers=args_list[0].workers, pin_memory=True)
     
-    model = [None]*args.process_num
-    file_name = [None]*args.process_num
-    auc_best = [0.0]*args.process_num
-    epoch_best = [0]*args.process_num
-    auc_val = [0.0]*args.process_num
-    acc_val = [0.0]*args.process_num
-    auc_test = [0.0]*args.process_num
-    acc_test = [0.0]*args.process_num
-    auc_tr = [0.0]*args.process_num
-    acc_tr = [0.0]*args.process_num
+    model_list = [None]*args_list[0].process_num
+    file_name = [None]*args_list[0].process_num
+    auc_best = [0.0]*args_list[0].process_num
+    epoch_best = [0]*args_list[0].process_num
+    auc_val = [0.0]*args_list[0].process_num
+    acc_val = [0.0]*args_list[0].process_num
+    auc_test = [0.0]*args_list[0].process_num
+    acc_test = [0.0]*args_list[0].process_num
+    auc_tr = [0.0]*args_list[0].process_num
+    acc_tr = [0.0]*args_list[0].process_num
 
-    for idx_process in range(args.process_num):
-        model[idx_process] = milmodels.__dict__[args.mil_model[idx_process]](args=args, ma_dim_in=2048).cuda()
-        file_name[idx_process] = f'{idx_process}_lr{args.lr}_lr_center{args.lr_center}_fold{fold}.pth'
+    for idx_process in range(args_list[0].process_num):
+        model_list[idx_process] = milmodels.__dict__[args_list[idx_process].mil_model](args=args_list[idx_process], ma_dim_in=2048).cuda()
+        file_name[idx_process] = f'{idx_process}_lr{args_list[idx_process].lr}_lr_center{args_list[idx_process].lr_center}_fold{fold}.pth'
 
-    for epoch in trange(1, (args.epochs+1)):        
-        train(loader_train, model)
-        auc, acc = validate(loader_val, model, args)
-        for idx_process in range(args.process_num):
+    for epoch in trange(1, (args_list[0].epochs+1)):
+        train(loader_train, model_list, args_list)
+        auc, acc = validate(loader_val, model_list, args_list)
+        for idx_process in range(args_list[0].process_num):
             if np.mean(auc[idx_process]) > auc_best[idx_process]:
                 epoch_best[idx_process] = epoch
                 auc_best[idx_process] = np.mean(auc[idx_process])
                 auc_val[idx_process] = auc[idx_process]
                 acc_val[idx_process] = acc[idx_process]
-                torch.save({'state_dict': model[idx_process].state_dict()}, file_name[idx_process])
+                torch.save({'state_dict': model_list[idx_process].state_dict()}, file_name[idx_process])
             print(f'auc val: {auc_val}')
     
 
-    dataset_test = Dataset_pkl(path_pretrained_pkl_root=args.data_root, fold_now=999, fold_all=9999, shuffle_slide=False, shuffle_patch=False, split='test', num_classes=args.num_classes, seed=args.seed)
-    loader_test = torch.utils.data.DataLoader(dataset_test, batch_size=args.batch_size, shuffle=False, num_workers=args.workers, pin_memory=True)
+    dataset_test = Dataset_pkl(path_pretrained_pkl_root=args_list[0].data_root, fold_now=999, fold_all=9999, shuffle_slide=False, shuffle_patch=False, split='test', num_classes=args_list[0].num_classes, seed=args_list[0].seed)
+    loader_test = torch.utils.data.DataLoader(dataset_test, batch_size=args_list[0].batch_size, shuffle=False, num_workers=args_list[0].workers, pin_memory=True)
     
-    for idx_process in range(args.process_num):
-        _checkpoint = torch.load(file_name[idx_process], map_location=f'cuda:{args.gpus[idx_process]}')
-        model[idx_process].load_state_dict(_checkpoint['state_dict'])
+    for idx_process in range(args_list[0].process_num):
+        _checkpoint = torch.load(file_name[idx_process], map_location=f'cuda:{args_list[idx_process].gpus}')
+        model_list[idx_process].load_state_dict(_checkpoint['state_dict'])
         os.remove(file_name[idx_process])
 
-    auc_test, acc_test = validate(loader_test, model, args)
-    auc_tr, acc_tr = validate(loader_train, model, args)
+    auc_test, acc_test = validate(loader_test, model_list, args_list)
+    auc_tr, acc_tr = validate(loader_train, model_list, args_list)
 
     del dataset_train, loader_train, dataset_val, loader_val
     print(f'fold [{fold}]: epoch_best ==> {epoch_best}')
@@ -124,7 +124,7 @@ def run_fold(args_list, fold, txt_name) -> Tuple:
     
     return auc_test, acc_test, auc_val, acc_val, auc_tr, acc_tr, dataset_test.category_idx, epoch_best
 
-def train(train_loader, model_list):
+def train(train_loader, model_list, args_list):
     torch.cuda.empty_cache()
     def train_single(_image, _target, _model, _gpu):
         # images --> #bags x #instances x #dims
@@ -136,24 +136,24 @@ def train(train_loader, model_list):
 
     for _model in model_list:
         _model.train()
-    threads = [None]*args.process_num
+    threads = [None]*args_list[0].process_num
     for i, (images, target) in enumerate(train_loader):
-        for i in range(args.process_num):
-            threads[i] = threading.Thread(target = train_single, args=(images, target, model_list[i], args.gpus[i]))
+        for i in range(args_list[0].process_num):
+            threads[i] = threading.Thread(target = train_single, args=(images, target, model_list[i], args_list[i].gpus))
             threads[i].start()
         
         for _thread in threads:
             _thread.join()
 
 
-def validate(val_loader, model_list, args):
+def validate(val_loader, model_list, args_list):
     torch.cuda.empty_cache()
 
-    auc = [None]*args.process_num
-    acc = [None]*args.process_num
+    auc = [None]*args_list[0].process_num
+    acc = [None]*args_list[0].process_num
     bag_labels = []
     bag_predictions = []
-    for i in range(args.process_num):
+    for i in range(args_list[0].process_num):
         bag_labels.append([])
         bag_predictions.append([])
 
@@ -162,35 +162,36 @@ def validate(val_loader, model_list, args):
         _image = _image.type(torch.FloatTensor).cuda(_gpu, non_blocking=True)
 
         prob_bag, _ = _model.infer(_image)
-        bag_predictions[_process_idx].append(prob_bag.squeeze(0).cpu().numpy())
-        bag_labels[_process_idx].append(_target.squeeze(0).numpy())
+        bag_predictions[_process_idx].append(prob_bag.squeeze(0).cpu().detach().numpy())
+        bag_labels[_process_idx].append(_target.squeeze(0).cpu().detach().numpy())
 
     for _model in model_list:
         _model.eval()
-    threads = [None]*args.process_num
+    threads = [None]*args_list[0].process_num
     with torch.no_grad():
         for i, (images, target) in enumerate(val_loader):
-            for i in range(args.process_num):
-                threads[i] = threading.Thread(target = valid_single, args=(images, target, model_list[i], args.gpus[i]))
+            for i in range(args_list[0].process_num):
+                threads[i] = threading.Thread(target = valid_single, args=(images, target, model_list[i], args_list[0].gpus, i))
                 threads[i].start()
             
             for _thread in threads:
                 _thread.join()
 
-        # bag_labels --> #bag x #classes
-        bag_labels = np.array(bag_labels)
-        # bag_predictions --> #bag x #classes
-        bag_predictions = np.array(bag_predictions)
-        assert len(bag_predictions.shape) == 2
-        auc, acc = multi_label_roc(bag_labels, bag_predictions, num_classes=bag_labels.shape[-1], pos_label=1)
+        # for i in range(args_list[0].process_num):
+        #     # bag_labels --> #bag x #classes
+        #     bag_labels[i] = np.array(bag_labels[i])
+        #     # bag_predictions --> #bag x #classes
+        #     bag_predictions[i] = np.array(bag_predictions[i])
+        #     assert len(bag_predictions[i].shape) == 2
+        # auc, acc = multi_label_roc(bag_labels, bag_predictions, num_classes=bag_labels.shape[-1], pos_label=1)
 
 
-        for i in range(args.process_num):
+        for i in range(args_list[0].process_num):
             # bag_labels --> #bag x #classes
             bag_labels[i] = np.array(bag_labels[i])
             bag_predictions[i] = np.array(bag_predictions[i])
             assert len(bag_predictions[i].shape) == 2
-            auc[i], acc[i] = multi_label_roc(bag_labels, bag_predictions, num_classes=bag_labels.shape[-1], pos_label=1)
+            auc[i], acc[i] = multi_label_roc(bag_labels[i], bag_predictions[i], num_classes=bag_labels[i].shape[-1], pos_label=1)
     return auc, acc
 
 if __name__ == '__main__':
@@ -209,9 +210,10 @@ if __name__ == '__main__':
     _gpus = [0,0,1,1]
     ##################################################################################
 
-    for idx_process in range(args_common.processes):
-        # args.num_classes=2 if args.dataset=='tcga_lung' else 1
-        args_list[idx_process].num_classes=1
+    for idx_process in range(args_common.process_num):
+        args_list[idx_process].num_classes=2 if args_list[idx_process].dataset=='tcga_lung' else 1
+        # args_list[idx_process].num_classes=1
+        args_list[idx_process].output_bag_dim=1
         
         args_list[idx_process].train_instance = _train_instance[idx_process]
         args_list[idx_process].ic_num_head = _ic_num_head[idx_process]
