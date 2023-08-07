@@ -57,7 +57,7 @@ parser.add_argument('--optimizer-nc', default='sgd', choices=['sgd', 'adam', 'ad
 parser.add_argument('--lr', default=0.003, type=float, metavar='LR', help='initial learning rate', dest='lr')
 # parser.add_argument('--lr-aux', default=0.001, type=float, help='initial learning rate')
 parser.add_argument('--lr-center', default=0.001, type=float, help='initial learning rate')
-parser.add_argument('--mil-model', default='Dsmil', type=str, help='use pre-training method')
+parser.add_argument('--mil-model', default='Dtfd', type=str, help='use pre-training method')
 
 parser.add_argument('--pushtoken', default=False, help='Push Bullet token')
 
@@ -162,14 +162,15 @@ if __name__ == '__main__':
     acc_fold_test = []
     auc_fold_test = []
 
-    # args.num_classes=2 if args.dataset=='tcga_lung' else 1
-    args.num_classes=1
+    args.num_classes=2 if args.dataset=='tcga_lung' else 1
+    # args.num_classes=1
+    args.output_bag_dim=1
     args.device = 0
 
     if args.mil_model == 'Dtfd':
         args.epochs = 200
     elif args.mil_model == 'Dsmil':
-        args.epochs = 40
+        args.epochs = 200
     elif args.mil_model == 'Attention':
         args.epochs = 100
     elif args.mil_model == 'GatedAttention':

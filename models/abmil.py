@@ -13,7 +13,7 @@ class Attention(MilBase):
         self.L = 500
         self.D = 128
         # self.K = self.dim_out
-        self.K = 1
+        self.K = args.output_bag_dim
 
         # self.feature_extractor_part1 = nn.Sequential(
         #     nn.Conv2d(1, 20, kernel_size=5),
@@ -36,7 +36,7 @@ class Attention(MilBase):
         )
 
         self.classifier = nn.Sequential(
-            nn.Linear(self.L, args.num_classes)
+            nn.Linear(self.L*self.K, 1)
         )
                     
         if args.train_instance == 'None':
@@ -69,10 +69,11 @@ class Attention(MilBase):
         # Y_hat = torch.sign(F.relu(Y_logit)).float()       
         
         if self.args.train_instance != 'None':
-            logit_instances = self.instance_classifier(H.squeeze(0))      
+            logit_instances = self.instance_classifier(H)      
+            # logit_bag: #bags x args.output_bag_dim     logit_instances: #instances x ic_dim_out (x Head_num)
             return {'bag': logit_bag, 'instance': logit_instances}
         else:       
-            return {'bag': logit_bag}
+            return {'bag': logit_bag, 'instance': None}
     
 
     # # AUXILIARY METHODS
@@ -103,7 +104,7 @@ class GatedAttention(MilBase):
         self.L = 500
         self.D = 128
         # self.K = self.dim_out
-        self.K = 1
+        self.K = args.output_bag_dim
 
         # self.feature_extractor_part1 = nn.Sequential(
         #     nn.Conv2d(1, 20, kernel_size=5),
@@ -133,7 +134,7 @@ class GatedAttention(MilBase):
 
         self.classifier = nn.Sequential(
             # nn.Linear(self.L*self.K, 1),
-            nn.Linear(self.L, args.num_classes),
+            nn.Linear(self.L*self.K, 1),
             # nn.Sigmoid()
         )
             
@@ -170,10 +171,12 @@ class GatedAttention(MilBase):
         # Y_hat = torch.sign(F.relu(Y_logit)).float()
 
         if self.args.train_instance != 'None':
-            logit_instances = self.instance_classifier(H.squeeze(0))      
+            logit_instances = self.instance_classifier(H)
+
+            # logit_bag: #bags x args.output_bag_dim     logit_instances: #instances x ic_dim_out (x Head_num)
             return {'bag': logit_bag, 'instance': logit_instances}
         else:       
-            return {'bag': logit_bag}
+            return {'bag': logit_bag, 'instance': None}
         
 
     # # AUXILIARY METHODS
