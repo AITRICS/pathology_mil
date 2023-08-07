@@ -89,7 +89,7 @@ class Dsmil(MilBase):
         super().__init__(args=args, ma_dim_in=ma_dim_in, ic_dim_in=ma_dim_in)
         self.args=args
         self.dim_in=2048
-        self.dim_out=1
+        self.dim_out=args.output_bag_dim
         self.i_classifier = FCLayer(in_size=self.dim_in, out_size=self.dim_out)
         self.b_classifier = BClassifier(input_size=self.dim_in, output_class=self.dim_out)
         self.milnet = MILNet(self.i_classifier, self.b_classifier)

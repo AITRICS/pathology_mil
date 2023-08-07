@@ -86,6 +86,7 @@ class MilBase(nn.Module):
         self.ma_dim_in = ma_dim_in
         self.alpha = args.alpha
         self.beta = args.beta
+        self.dataset = args.dataset
         
         if 'instance' in args.train_instance:
             if args.ic_depth == 0:
@@ -179,6 +180,7 @@ class MilBase(nn.Module):
         """
 
         logit_dict = self.forward(X)
+        print(logit_dict['bag'].shape)
         loss_bag = self.criterion_bag(logit_dict['bag'], Y)
 
         # if 'instance' in logit_dict.keys():
@@ -227,33 +229,95 @@ class MilBase(nn.Module):
         <return>
             loss: scalar
         """
-        pseudo_threshold = 0.5
-        n_instances = p.size(0)
-        if target == 0:
-            return self.criterion(p.sigmoid(), torch.zeros_like(p, device=p.get_device()))
-        elif target == 1:
-            # pseudo labeling
-            with torch.no_grad():
-                pseudo_prob = p.sigmoid()
-                computed_instances_labels = torch.zeros(pseudo_prob.shape, device=p.get_device()).float()
-                mask_instances_labels = torch.zeros(pseudo_prob.shape, device=p.get_device()).float()
+        if self.dataset == 'CAMELYON16':
+            n_instances = p.size(0)
+            if target == 0:
+                return self.criterion(p.sigmoid(), torch.zeros_like(p, device=p.get_device()))
+            elif target == 1:
+                # pseudo labeling
+                with torch.no_grad():
+                    pseudo_prob = p.sigmoid()
+                    computed_instances_labels = torch.zeros(pseudo_prob.shape, device=p.get_device()).float()
+                    mask_instances_labels = torch.zeros(pseudo_prob.shape, device=p.get_device()).float()
+                    
+                    _, topk_idx = torch.topk(pseudo_prob, k=int(self.alpha*n_instances), dim=0)
+                    computed_instances_labels[topk_idx] = 1.
+                    mask_instances_labels[topk_idx] = 1.
+                    if self.beta > 0.:
+                        _, bottomk_idx = torch.topk(pseudo_prob, k=int(self.beta*n_instances), largest=False, dim=0)
+                        computed_instances_labels[bottomk_idx] = 0.
+                        mask_instances_labels[bottomk_idx] = 1.
                 
-                _, topk_idx = torch.topk(pseudo_prob, k=int(self.alpha*n_instances), dim=0)
-                computed_instances_labels[topk_idx] = 1.
-                mask_instances_labels[topk_idx] = 1.
-                if self.beta > 0.:
-                    _, bottomk_idx = torch.topk(pseudo_prob, k=int(self.beta*n_instances), largest=False, dim=0)
-                    computed_instances_labels[bottomk_idx] = 0.
-                    mask_instances_labels[bottomk_idx] = 1.
+                # calculate pseudo labeled loss
+                pl_loss = (self.criterion(pseudo_prob, computed_instances_labels) * mask_instances_labels).sum() / mask_instances_labels.sum()
+                
+                # weighting labeled loss            
+                # pl_loss = self.unlabeled_weight()*pl_loss
+                                
+                return pl_loss
+        elif self.dataset == 'tcga_lung':
+            n_instances = p.size(0)
+            p = p.squeeze()
+            if target == 0:
+                with torch.no_grad():
+                    type0_pred = p[:, 0]
+                    type1_pred = p[:, 1]
+                    type0_prob = type0_pred.sigmoid()
+                    type1_prob = type1_pred.sigmoid()
+                    labeled_loss = self.criterion(type1_prob, torch.zeros_like(type1_prob, device=type1_prob.get_device()))
+                    
+                    computed_instances_labels = torch.zeros(type0_prob.shape, device=p.get_device()).float()
+                    mask_instances_labels = torch.zeros(type0_prob.shape, device=p.get_device()).float()
+                    
+                    _, topk_idx = torch.topk(type0_prob, k=int(self.alpha*n_instances), dim=0)
+                    computed_instances_labels[topk_idx] = 1.
+                    mask_instances_labels[topk_idx] = 1.
+                    if self.beta > 0.:
+                        _, bottomk_idx = torch.topk(type0_prob, k=int(self.beta*n_instances), largest=False, dim=0)
+                        computed_instances_labels[bottomk_idx] = 0.
+                        mask_instances_labels[bottomk_idx] = 1.
+                
+                # calculate pseudo labeled loss
+                pl_loss = (self.criterion(type0_prob, computed_instances_labels) * mask_instances_labels).sum() / mask_instances_labels.sum()
+                
+                # weighting labeled loss            
+                # pl_loss = self.unlabeled_weight()*pl_loss
+                
+                total_loss = labeled_loss + pl_loss
+                                
+                return total_loss
             
-            # calculate pseudo labeled loss
-            pl_loss = (self.criterion(pseudo_prob, computed_instances_labels) * mask_instances_labels).sum() / mask_instances_labels.sum()
+            elif target == 1:
+                # pseudo labeling
+                with torch.no_grad():
+                    type0_pred = p[:, 0]
+                    type1_pred = p[:, 1]
+                    type0_prob = type0_pred.sigmoid()
+                    type1_prob = type1_pred.sigmoid()
+                    labeled_loss = self.criterion(type0_prob, torch.zeros_like(type0_prob, device=type0_prob.get_device()))
+                    
+                    computed_instances_labels = torch.zeros(type1_pred.shape, device=p.get_device()).float()
+                    mask_instances_labels = torch.zeros(type1_pred.shape, device=p.get_device()).float()
+                    
+                    _, topk_idx = torch.topk(type1_pred, k=int(self.alpha*n_instances), dim=0)
+                    computed_instances_labels[topk_idx] = 1.
+                    mask_instances_labels[topk_idx] = 1.
+                    if self.beta > 0.:
+                        _, bottomk_idx = torch.topk(type1_pred, k=int(self.beta*n_instances), largest=False, dim=0)
+                        computed_instances_labels[bottomk_idx] = 0.
+                        mask_instances_labels[bottomk_idx] = 1.
+                
+                # calculate pseudo labeled loss
+                pl_loss = (self.criterion(type1_pred, computed_instances_labels) * mask_instances_labels).sum() / mask_instances_labels.sum()
+                
+                # weighting labeled loss            
+                # pl_loss = self.unlabeled_weight()*pl_loss
+                                
+                total_loss = labeled_loss + pl_loss
+                                
+                return total_loss
             
-            # weighting labeled loss            
-            # pl_loss = self.unlabeled_weight()*pl_loss
-                            
-            return pl_loss
-
+            
     def semisup2(self, p: torch.Tensor, target=0):
         """ 
         <INPUT>

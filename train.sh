@@ -1,10 +1,11 @@
 ## ic --> instance classifier
 ## nc --> negative centroid
 
-gpu=6
-data_root=/mnt/aitrics_ext/ext01/shared/camelyon16_eosin_224_16_pkl_0524/swav_res50
+gpu=5
+data_root=/mnt/aitrics_ext/ext01/shared/tcgalung_eosin_224_16_pkl_0806/swav_res50/
 # single도 해볼 수 있음
 scheduler_centroid=single
+# tcga_lung, CAMELYON16 
 dataset=CAMELYON16
 # None, intrainstance_divdis, interinstance_vc, interinstance_cosine, intrainstance_vc, intrainstance_cosine, semisup1
 train_instance=semisup1 
@@ -21,7 +22,7 @@ stddev_disagree=1.0
 optimizer_nc=adamw
 lr=0.003
 lr_center=0.0001
-# Dtfd, Attention, GatedAttention 가능
+# Dtfd, Attention, GatedAttention, Dsmil 가능
 mil_model=Dsmil
 alpha=0.1
 beta=0
@@ -38,7 +39,11 @@ beta=0
 # done
 
 
-CUDA_VISIBLE_DEVICES=$gpu python train.py --data-root $data_root --scheduler-centroid $scheduler_centroid --dataset $dataset --train-instance $train_instance \
-    --ic-num-head $ic_num_head --ic-depth $ic_depth --weight-agree $weight_agree --weight-disagree $weight_disagree --stddev-disagree $stddev_disagree \
-    --optimizer-nc $optimizer_nc --lr 0.003 --lr-center $lr_center --mil-model $mil_model --pushtoken o.OsyxHt1pZuwUBoMEFYBuzHFNjV5ekr95 > LR_${lr_downstream}_milmodel_${mil_model}_gpu_${gpu}.txt
-
+for lr in 0.003; do
+    for alpha in 0.1 0.2 0.3; do
+        CUDA_VISIBLE_DEVICES=$gpu nohup python train.py --data-root $data_root --scheduler-centroid $scheduler_centroid --dataset $dataset --train-instance $train_instance \
+        --ic-num-head $ic_num_head --ic-depth $ic_depth --weight-agree $weight_agree --weight-disagree $weight_disagree --stddev-disagree $stddev_disagree \
+        --optimizer-nc $optimizer_nc --lr $lr --lr-center $lr_center --mil-model $mil_model --alpha $alpha --pushtoken o.OsyxHt1pZuwUBoMEFYBuzHFNjV5ekr95 > logs/DSET_${dataset}_milmodel_${mil_model}_train_instance_${train_instance}_gpu_${gpu}.txt &
+        (( gpu+=1 ))
+    done
+done

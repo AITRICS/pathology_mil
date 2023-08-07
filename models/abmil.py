@@ -13,7 +13,8 @@ class Attention(MilBase):
         self.L = 500
         self.D = 128
         # self.K = self.dim_out
-        self.K = 1
+        self.K = args.output_bag_dim
+        self.criterion = nn.BCEWithLogitsLoss()
 
         # self.feature_extractor_part1 = nn.Sequential(
         #     nn.Conv2d(1, 20, kernel_size=5),
@@ -36,7 +37,7 @@ class Attention(MilBase):
         )
 
         self.classifier = nn.Sequential(
-            nn.Linear(self.L, args.num_classes)
+            nn.Linear(self.L*self.K, 1)
         )
         
         self.optimizer['mil_model'] = optim.Adam(list(self.encoder.parameters())+list(self.attention.parameters())+list(self.classifier.parameters())+
@@ -65,8 +66,11 @@ class Attention(MilBase):
         logit_bag = self.classifier(M).squeeze(2) # BxK        
         # Y_hat = torch.sign(F.relu(Y_logit)).float()
 
-        logit_instances = self.instance_classifier(H.squeeze(0))
-        return {'bag': logit_bag, 'instance': logit_instances}
+        if self.args.train_instance != 'None':
+            logit_instances = self.instance_classifier(H)
+            return {'bag': logit_bag, 'instance': logit_instances}
+        else:
+            return {'bag': logit_bag, 'instance': None}
 
     # # AUXILIARY METHODS
     # def calculate_classification_error(self, X, Y):
@@ -96,7 +100,8 @@ class GatedAttention(MilBase):
         self.L = 500
         self.D = 128
         # self.K = self.dim_out
-        self.K = 1
+        self.K = args.output_bag_dim
+        self.criterion = nn.BCEWithLogitsLoss()
 
         # self.feature_extractor_part1 = nn.Sequential(
         #     nn.Conv2d(1, 20, kernel_size=5),
@@ -126,7 +131,7 @@ class GatedAttention(MilBase):
 
         self.classifier = nn.Sequential(
             # nn.Linear(self.L*self.K, 1),
-            nn.Linear(self.L, args.num_classes),
+            nn.Linear(self.L*self.K, 1),
             # nn.Sigmoid()
         )
     
@@ -157,9 +162,11 @@ class GatedAttention(MilBase):
         logit_bag = self.classifier(M).squeeze(2) # BxK
         # Y_hat = torch.sign(F.relu(Y_logit)).float()
 
-        
-        logit_instances = self.instance_classifier(H.squeeze(0))
-        return {'bag': logit_bag, 'instance': logit_instances}
+        if self.args.train_instance != 'None':
+            logit_instances = self.instance_classifier(H)
+            return {'bag': logit_bag, 'instance': logit_instances}
+        else:
+            return {'bag': logit_bag, 'instance': None}
 
     # # AUXILIARY METHODS
     # def calculate_classification_error(self, X, Y):

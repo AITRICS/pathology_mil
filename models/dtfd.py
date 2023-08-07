@@ -232,7 +232,6 @@ class Dtfd(MilBase):
             return loss0 + loss1
         else:            
             loss2 = getattr(self, self.args.train_instance)(logit_dict['instance'], int(Y[0, 0]))
-            print(loss2)
             return loss0 + loss1 + loss2
     
     def update(self, X, Y, epoch):
