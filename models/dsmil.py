@@ -89,14 +89,21 @@ class Dsmil(MilBase):
         super().__init__(args=args, ma_dim_in=ma_dim_in, ic_dim_in=ma_dim_in)
         self.args=args
         self.dim_in=2048
-        self.dim_out=args.output_bag_dim
+        
+        self.dim_out=args.output_bag_dim 
         self.i_classifier = FCLayer(in_size=self.dim_in, out_size=self.dim_out)
         self.b_classifier = BClassifier(input_size=self.dim_in, output_class=self.dim_out)
         self.milnet = MILNet(self.i_classifier, self.b_classifier)
-        self.criterion = nn.BCEWithLogitsLoss() 
         self.optimizer={}
         self.scheduler={}
-        self.optimizer['mil_model'] = torch.optim.Adam(list(self.i_classifier.parameters())+list(self.b_classifier.parameters())+list(self.milnet.parameters()), lr=args.lr, betas=(0.5, 0.9), weight_decay=0.005)
+
+        if args.train_instance == 'None':
+            self.optimizer['mil_model'] = torch.optim.Adam(list(self.i_classifier.parameters())+list(self.b_classifier.parameters())+
+                                                            list(self.milnet.parameters()), lr=args.lr, betas=(0.5, 0.9), weight_decay=0.005)
+        else:
+            self.optimizer['mil_model'] = torch.optim.Adam(list(self.i_classifier.parameters())+list(self.b_classifier.parameters())+
+                                                            list(self.milnet.parameters())+list(self.instance_classifier.parameters()), lr=args.lr, betas=(0.5, 0.9), weight_decay=0.005)
+
         # self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, self.args.num_epochs, 0.000005)
         self.scheduler['mil_model'] = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer['mil_model'], self.args.epochs*self.args.num_step, 0.000005)
         
@@ -108,6 +115,7 @@ class Dsmil(MilBase):
         if self.args.train_instance != 'None':
             logit_instance = self.instance_classifier(feat_instance)
             # logit_bag: 1 x num_class, instance_logit_stream1: #instances x num_class, logit_instance: #instances (x num_class) x ic_dim_out(=V) (x args.ic_num_head)
+            # logit_bag: #bags x args.output_bag_dim     logit_instances: #instances x ic_dim_out (x Head_num)
             return {'bag': logit_bag, 'instance_stream1': instance_logit_stream1.unsqueeze(0), 'instance': logit_instance}
         else:
             return {'bag': logit_bag, 'instance_stream1': instance_logit_stream1.unsqueeze(0)}

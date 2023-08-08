@@ -2,7 +2,8 @@
 ## nc --> negative centroid
 
 gpu=5
-data_root=/mnt/aitrics_ext/ext01/shared/tcgalung_eosin_224_16_pkl_0806/swav_res50/
+data_root=/mnt/aitrics_ext/ext01/shared/tcgalung_eosin_224_16_pkl_0807/swav_res50/
+# data_root=/mnt/aitrics_ext/ext01/shared/camelyon16_eosin_224_16_pkl_0524/swav_res50
 # single도 해볼 수 있음
 scheduler_centroid=single
 # tcga_lung, CAMELYON16 
@@ -31,6 +32,7 @@ beta=0
 
     # for lr in 0.01 0.003 0.001 0.0003; do
 # for lr in 0.01 0.003; do
+
 
 #     CUDA_VISIBLE_DEVICES=$gpu python train.py --data-root $data_root --scheduler-centroid $scheduler_centroid --dataset $dataset --train-instance $train_instance \
 #     --ic-num-head $ic_num_head --ic-depth $ic_depth --weight-agree $weight_agree --weight-disagree $weight_disagree --stddev-disagree $stddev_disagree \

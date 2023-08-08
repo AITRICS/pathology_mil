@@ -50,11 +50,20 @@ class Classifier_instance(nn.Module):
         x: num_patch x fs
 
         return: Length_sequence x fs x Head_num
+
+        ours, divdis
         """
         return torch.stack([_fc(x) for _fc in self.fc], dim=2)
          
     
     def forward_singlehead(self, x):
+        """
+        x: num_patch x fs
+
+        return: Length_sequence x fs
+
+        baseline, semi-sups
+        """
         return self.fc(x)
 
 
@@ -105,8 +114,8 @@ class MilBase(nn.Module):
 
         if args.train_instance != 'None':
             self.instance_classifier = Classifier_instance(dim_in=ic_dim_in, dim_out=ic_dim_out, layer_depth=args.ic_depth, num_head=args.ic_num_head)
-            # self.set_negative_centroid(args=args, dim_negative_centroid=ic_dim_out)
-       
+            self.set_negative_centroid(args=args, dim_negative_centroid=ic_dim_out)
+
         if args.train_instance=='intrainstance_cosine':
             self.mask_diag = 1.0-torch.eye(args.ic_num_head, requires_grad=False).unsqueeze(0).cuda()
         
@@ -332,7 +341,9 @@ class MilBase(nn.Module):
 
     def intrainstance_divdis(self, p: torch.Tensor, target=0):
         """
-        Length_sequence x Head_num
+        p: #instances x ic_dim_out x Head_num
+        ic_dim_out == args.num_classes
+
         notation : H - head , D - num_class, B - sequence length(본 논문의 batch size)
         """    
         if target == 0:
@@ -426,7 +437,7 @@ class MilBase(nn.Module):
         """
         1) cosine(negative)/variance(positive) + 2) Covariance
  
-        p: Length_sequence x fs x Head_num
+        p: #instances x ic_dim_out x Head_num
         """
         
         ls, fs, hn = p.shape
@@ -457,7 +468,7 @@ class MilBase(nn.Module):
         """
         1) cosine(negative)/variance(positive) + 2) Covariance
  
-        p: Length_sequence x fs x Head_num
+        p: #instances x ic_dim_out x Head_num
         """
         
         ls, fs, hn = p.shape
