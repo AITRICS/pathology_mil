@@ -44,7 +44,7 @@ parser.add_argument('--batch-size', default=1, type=int, metavar='N', help='the 
 parser.add_argument('--seed', default=1, type=int, help='seed for initializing training. ')
 
 parser.add_argument('--dataset', default='CAMELYON16', choices=['CAMELYON16', 'tcga_lung', 'tcga_stad'], type=str, help='dataset type')
-parser.add_argument('--train-instance', default='intrainstance_vc', choices=['None', 'semisup1', 'semisup2', 'intrainstance_divdis',
+parser.add_argument('--train-instance', default='None', choices=['None', 'semisup1', 'semisup2', 'intrainstance_divdis',
                                                                                 'interinstance_vc','interinstance_cosine', 'intrainstance_vc',
                                                                                 'intrainstance_cosine'], type=str, help='instance loss type')
 parser.add_argument('--ic-num-head', default=5, type=int, help='# of projection head for each instance token')
@@ -82,9 +82,7 @@ def run_fold(args, fold, txt_name) -> Tuple:
     
     auc_best = 0.0
     epoch_best = 0
-    file_name = f'{txt_name}_lr{args.lr}_fold{fold}.pth'
-    
-    print(args.train_instance)
+    file_name = f'{txt_name}_lr{args.lr}_lr_center{args.lr_center}_fold{fold}.pth'
     for epoch in trange(1, (args.epochs+1)):        
         train(loader_train, model, epoch)
         auc, acc = validate(loader_val, model, args)
@@ -167,12 +165,14 @@ if __name__ == '__main__':
     auc_fold_test = []
 
     args.num_classes=2 if args.dataset=='tcga_lung' else 1
+    # args.num_classes=1
+    args.output_bag_dim=1
     args.device = 0
 
     if args.mil_model == 'Dtfd':
         args.epochs = 200
     elif args.mil_model == 'Dsmil':
-        args.epochs = 40
+        args.epochs = 200
     elif args.mil_model == 'Attention':
         args.epochs = 100
     elif args.mil_model == 'GatedAttention':

@@ -13,7 +13,7 @@ class Attention(MilBase):
         self.L = 500
         self.D = 128
         # self.K = self.dim_out
-        self.K = 1
+        self.K = args.output_bag_dim
 
         # self.feature_extractor_part1 = nn.Sequential(
         #     nn.Conv2d(1, 20, kernel_size=5),
@@ -36,12 +36,15 @@ class Attention(MilBase):
         )
 
         self.classifier = nn.Sequential(
-            nn.Linear(self.L, args.num_classes)
+            nn.Linear(self.L*self.K, 1)
         )
-        
-        self.optimizer['mil_model'] = optim.Adam(list(self.encoder.parameters())+list(self.attention.parameters())+list(self.classifier.parameters())+
-                                    list(self.instance_classifier.parameters()), lr=args.lr, betas=(0.9, 0.999), weight_decay=10e-5)
-
+                    
+        if args.train_instance == 'None':
+            self.optimizer['mil_model'] = optim.Adam(list(self.encoder.parameters())+list(self.attention.parameters())+list(self.classifier.parameters()),
+                                                     lr=args.lr, betas=(0.9, 0.999), weight_decay=10e-5)
+        else:
+            self.optimizer['mil_model'] = optim.Adam(list(self.encoder.parameters())+list(self.attention.parameters())+list(self.classifier.parameters())
+                                                     +list(self.instance_classifier.parameters()), lr=args.lr, betas=(0.9, 0.999), weight_decay=10e-5)
 
     def forward(self, x):
         # INPUT: #bags x #instances x #dims
@@ -63,10 +66,15 @@ class Attention(MilBase):
         M = torch.matmul(A, H)  # BxKxL
 
         logit_bag = self.classifier(M).squeeze(2) # BxK        
-        # Y_hat = torch.sign(F.relu(Y_logit)).float()
-
-        logit_instances = self.instance_classifier(H.squeeze(0))
-        return {'bag': logit_bag, 'instance': logit_instances}
+        # Y_hat = torch.sign(F.relu(Y_logit)).float()       
+        
+        if self.args.train_instance != 'None':
+            logit_instances = self.instance_classifier(H)      
+            # logit_bag: #bags x args.output_bag_dim     logit_instances: #instances x ic_dim_out (x Head_num)
+            return {'bag': logit_bag, 'instance': logit_instances}
+        else:       
+            return {'bag': logit_bag, 'instance': None}
+    
 
     # # AUXILIARY METHODS
     # def calculate_classification_error(self, X, Y):
@@ -96,7 +104,7 @@ class GatedAttention(MilBase):
         self.L = 500
         self.D = 128
         # self.K = self.dim_out
-        self.K = 1
+        self.K = args.output_bag_dim
 
         # self.feature_extractor_part1 = nn.Sequential(
         #     nn.Conv2d(1, 20, kernel_size=5),
@@ -126,14 +134,19 @@ class GatedAttention(MilBase):
 
         self.classifier = nn.Sequential(
             # nn.Linear(self.L*self.K, 1),
-            nn.Linear(self.L, args.num_classes),
+            nn.Linear(self.L*self.K, 1),
             # nn.Sigmoid()
         )
-    
-        self.optimizer['mil_model'] = optim.Adam(list(self.encoder.parameters())+list(self.attention_V.parameters())+list(self.attention_U.parameters())
+            
+        if args.train_instance == 'None':
+            self.optimizer['mil_model'] = optim.Adam(list(self.encoder.parameters())+list(self.attention_V.parameters())+list(self.attention_U.parameters())
+                                                +list(self.attention_weights.parameters())+list(self.classifier.parameters()),
+                                                 lr=args.lr, betas=(0.9, 0.999), weight_decay=10e-5)
+        else:
+            self.optimizer['mil_model'] = optim.Adam(list(self.encoder.parameters())+list(self.attention_V.parameters())+list(self.attention_U.parameters())
                                                 +list(self.attention_weights.parameters())+list(self.classifier.parameters())+list(self.instance_classifier.parameters()),
                                                  lr=args.lr, betas=(0.9, 0.999), weight_decay=10e-5)
-                
+            
     def forward(self, x):
         # INPUT: #bags x #instances x #dims
         # OUTPUT: #bags x #classes
@@ -157,9 +170,14 @@ class GatedAttention(MilBase):
         logit_bag = self.classifier(M).squeeze(2) # BxK
         # Y_hat = torch.sign(F.relu(Y_logit)).float()
 
+        if self.args.train_instance != 'None':
+            logit_instances = self.instance_classifier(H)
+
+            # logit_bag: #bags x args.output_bag_dim     logit_instances: #instances x ic_dim_out (x Head_num)
+            return {'bag': logit_bag, 'instance': logit_instances}
+        else:       
+            return {'bag': logit_bag, 'instance': None}
         
-        logit_instances = self.instance_classifier(H.squeeze(0))
-        return {'bag': logit_bag, 'instance': logit_instances}
 
     # # AUXILIARY METHODS
     # def calculate_classification_error(self, X, Y):
