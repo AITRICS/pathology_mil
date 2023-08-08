@@ -2,17 +2,19 @@
 ## nc --> negative centroid
 
 gpu=5
-#camerelon: 
-#lung: 
-data_root=/mnt/aitrics_ext/ext01/shared/tcgalung_eosin_224_16_pkl_0806/swav_res50/
+#camerelon: /mnt/aitrics_ext/ext01/shared/camelyon16_eosin_224_16_pkl_0524/swav_res50
+#lung: /mnt/aitrics_ext/ext01/shared/tcgalung_eosin_224_16_pkl_0806/swav_res50/
+
+data_root=/mnt/aitrics_ext/ext01/shared/camelyon16_eosin_224_16_pkl_0524/swav_res50
+
 # single도 해볼 수 있음
 scheduler_centroid=single
 # tcga_lung, CAMELYON16 
-dataset=tcga_lung
+dataset=CAMELYON16
 # None, intrainstance_divdis, interinstance_vc, interinstance_cosine, intrainstance_vc, intrainstance_cosine, semisup1
 train_instance=semisup1 
 # intrainstance_divdis 하면 당연히 ic_num_head 1
-ic_num_head=2
+ic_num_head=1
 # intrainstance_divdis 하면 ic_num_head 1
 ic_depth=1
 weight_agree=1.0

@@ -129,4 +129,5 @@ dmypy.json
 .pyre/
 
 # User custom
+*.pth
 *.txt

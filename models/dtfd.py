@@ -126,8 +126,6 @@ class Dtfd(MilBase):
         super().__init__(args=args, ma_dim_in=ma_dim_in, ic_dim_in=512)
         
         mDim=512
-        
-        self.criterion = nn.BCEWithLogitsLoss()
         self.numGroup = 5
         self.instance_per_group = 1
         self.classifier = Classifier_1fc(mDim, args.output_bag_dim, 0)
@@ -226,8 +224,8 @@ class Dtfd(MilBase):
 
         logit_dict = self.forward(X)
         slide_sub_labels = Y.expand(self.numGroup, -1).to(self.device) # batchsize must be 1
-        loss0 = self.criterion(logit_dict['pseudo_bag'], slide_sub_labels).mean()
-        loss1 = self.criterion(logit_dict['bag'], Y).mean()
+        loss0 = self.criterion_bag(logit_dict['pseudo_bag'], slide_sub_labels).mean()
+        loss1 = self.criterion_bag(logit_dict['bag'], Y).mean()
         
         if self.args.train_instance == 'None':
             return loss0 + loss1

@@ -135,11 +135,12 @@ class MilBase(nn.Module):
             elif self.args.optimizer_nc == 'sgd':
                 self.optimizer['negative_centroid'] = optim.SGD(params=[self.negative_centroid], lr=self.args.lr_center, weight_decay=0.0)
 
-        # args.num_step = len(loader_train)
-        if self.args.scheduler_centroid == 'single':
-            self.scheduler['negative_centroid'] = CosineAnnealingWarmUpSingle(self.optimizer['negative_centroid'], max_lr=self.args.lr_center, epochs=self.args.epochs, steps_per_epoch=self.args.num_step)
-        elif self.args.scheduler_centroid == 'multi':
-            self.scheduler['negative_centroid'] = CosineAnnealingWarmUpRestarts(self.optimizer['negative_centroid'], eta_max=self.args.lr_center, step_total=self.args.epochs*self.args.num_step)
+        if ('interinstance' in args.train_instance) or ('intrainstance' in args.train_instance):
+            # args.num_step = len(loader_train)
+            if self.args.scheduler_centroid == 'single':
+                self.scheduler['negative_centroid'] = CosineAnnealingWarmUpSingle(self.optimizer['negative_centroid'], max_lr=self.args.lr_center, epochs=self.args.epochs, steps_per_epoch=self.args.num_step)
+            elif self.args.scheduler_centroid == 'multi':
+                self.scheduler['negative_centroid'] = CosineAnnealingWarmUpRestarts(self.optimizer['negative_centroid'], eta_max=self.args.lr_center, step_total=self.args.epochs*self.args.num_step)
 
     def forward(self, x: torch.Tensor):
         """
@@ -189,7 +190,7 @@ class MilBase(nn.Module):
         """
 
         logit_dict = self.forward(X)
-        print(logit_dict['bag'].shape)
+        # print(logit_dict['bag'].shape)
         loss_bag = self.criterion_bag(logit_dict['bag'], Y)
 
         # if 'instance' in logit_dict.keys():
@@ -241,7 +242,7 @@ class MilBase(nn.Module):
         if self.dataset == 'CAMELYON16':
             n_instances = p.size(0)
             if target == 0:
-                return self.criterion(p.sigmoid(), torch.zeros_like(p, device=p.get_device()))
+                return self.criterion_bag(p.sigmoid(), torch.zeros_like(p, device=p.get_device()))
             elif target == 1:
                 # pseudo labeling
                 with torch.no_grad():
@@ -258,7 +259,7 @@ class MilBase(nn.Module):
                         mask_instances_labels[bottomk_idx] = 1.
                 
                 # calculate pseudo labeled loss
-                pl_loss = (self.criterion(pseudo_prob, computed_instances_labels) * mask_instances_labels).sum() / mask_instances_labels.sum()
+                pl_loss = (self.criterion_bag(pseudo_prob, computed_instances_labels) * mask_instances_labels).sum() / mask_instances_labels.sum()
                 
                 # weighting labeled loss            
                 # pl_loss = self.unlabeled_weight()*pl_loss
@@ -273,7 +274,7 @@ class MilBase(nn.Module):
                     type1_pred = p[:, 1]
                     type0_prob = type0_pred.sigmoid()
                     type1_prob = type1_pred.sigmoid()
-                    labeled_loss = self.criterion(type1_prob, torch.zeros_like(type1_prob, device=type1_prob.get_device()))
+                    labeled_loss = self.criterion_bag(type1_prob, torch.zeros_like(type1_prob, device=type1_prob.get_device()))
                     
                     computed_instances_labels = torch.zeros(type0_prob.shape, device=p.get_device()).float()
                     mask_instances_labels = torch.zeros(type0_prob.shape, device=p.get_device()).float()
@@ -287,7 +288,7 @@ class MilBase(nn.Module):
                         mask_instances_labels[bottomk_idx] = 1.
                 
                 # calculate pseudo labeled loss
-                pl_loss = (self.criterion(type0_prob, computed_instances_labels) * mask_instances_labels).sum() / mask_instances_labels.sum()
+                pl_loss = (self.criterion_bag(type0_prob, computed_instances_labels) * mask_instances_labels).sum() / mask_instances_labels.sum()
                 
                 # weighting labeled loss            
                 # pl_loss = self.unlabeled_weight()*pl_loss

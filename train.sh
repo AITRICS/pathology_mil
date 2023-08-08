@@ -2,8 +2,9 @@
 ## nc --> negative centroid
 
 gpu=5
-data_root=/mnt/aitrics_ext/ext01/shared/tcgalung_eosin_224_16_pkl_0807/swav_res50/
-# data_root=/mnt/aitrics_ext/ext01/shared/camelyon16_eosin_224_16_pkl_0524/swav_res50
+#camerelon: /mnt/aitrics_ext/ext01/shared/camelyon16_eosin_224_16_pkl_0524/swav_res50
+#lung: /mnt/aitrics_ext/ext01/shared/tcgalung_eosin_224_16_pkl_0806/swav_res50/
+data_root=/mnt/aitrics_ext/ext01/shared/camelyon16_eosin_224_16_pkl_0524/swav_res50
 # single도 해볼 수 있음
 scheduler_centroid=single
 # tcga_lung, CAMELYON16 
@@ -24,7 +25,7 @@ optimizer_nc=adamw
 lr=0.003
 lr_center=0.0001
 # Dtfd, Attention, GatedAttention, Dsmil 가능
-mil_model=Dsmil
+mil_model=Dtfd
 alpha=0.1
 beta=0
 
