@@ -27,8 +27,16 @@ alpha=0.1
 beta=0
 
 # 이렇게 하면 8개 돔. gpu 0부터 시작
-for weight_cov in 0 1; do
-    for lr in 0.01 0.003 0.001 0.0003; do
+    # for lr in 0.01 0.003 0.001 0.0003; do
+# for lr in 0.01 0.003; do
+
+
+#     CUDA_VISIBLE_DEVICES=$gpu python train.py --data-root $data_root --scheduler-centroid $scheduler_centroid --dataset $dataset --train-instance $train_instance \
+#     --ic-num-head $ic_num_head --ic-depth $ic_depth --weight-agree $weight_agree --weight-disagree $weight_disagree --stddev-disagree $stddev_disagree \
+#     --optimizer-nc $optimizer_nc --lr $lr --lr-center $lr_center --mil-model $mil_model --pushtoken o.OsyxHt1pZuwUBoMEFYBuzHFNjV5ekr95 > LR_${lr_downstream}_milmodel_${milmodel}_gpu_${gpu}.txt &
+#     (( gpu+=1 ))
+# done
+
 
 CUDA_VISIBLE_DEVICES=$gpu python train.py --data-root $data_root --scheduler-centroid $scheduler_centroid --dataset $dataset --train-instance $train_instance \
     --ic-num-head $ic_num_head --ic-depth $ic_depth --weight-agree $weight_agree --weight-disagree $weight_disagree --stddev-disagree $stddev_disagree \

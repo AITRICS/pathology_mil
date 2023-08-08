@@ -54,7 +54,7 @@ class Attention(MilBase):
         # H = self.feature_extractor_part1(x)
         # H = H.view(-1, 50 * 4 * 4)
         H = self.encoder(x)  # #bags x #instances x 500
-# H: seq(=-1) x self.L,    seq=K
+        # H: seq(=-1) x self.L,    seq=K
         A = self.attention(H)  # BxNx1
         # A = self.attention(x)  
         A = torch.transpose(A, 2, 1)  # Bx1xN
