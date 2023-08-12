@@ -419,7 +419,8 @@ class MilBase(nn.Module):
             for idx in range(self.args.num_classes):
                 loss+=self._intrainstance_cosine(_p[:,:,idx,:], 1 if target==idx else 0, idx)
             _nc = F.normalize(self.negative_centroid, dim=1, eps=1e-8)
-            loss+=torch.trace(_nc@_nc.T)
+            loss_centroid = (_nc@_nc.T).fill_diagonal_(0)
+            loss += torch.sum(loss_centroid)/(self.args.num_classes*(self.args.num_classes-1))
             return loss
         else:
             raise ValueError('invalid self.args.num_classes')
