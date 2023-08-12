@@ -13,7 +13,7 @@ class Attention(MilBase):
         self.L = 500
         self.D = 128
         # self.K = self.dim_out
-        self.K = args.output_bag_dim
+        self.K = args.num_classes
 
         # self.feature_extractor_part1 = nn.Sequential(
         #     nn.Conv2d(1, 20, kernel_size=5),
@@ -83,7 +83,7 @@ class Attention_ce(MilBase):
         self.L = 500
         self.D = 128
         # self.K = self.dim_out
-        self.K = args.output_bag_dim
+        self.K = args.num_classes
 
         self.criterion_bag = nn.CrossEntropyLoss() 
 
@@ -154,7 +154,7 @@ class GatedAttention(MilBase):
         self.L = 500
         self.D = 128
         # self.K = self.dim_out
-        self.K = args.output_bag_dim
+        self.K = args.num_classes
 
         # self.feature_extractor_part1 = nn.Sequential(
         #     nn.Conv2d(1, 20, kernel_size=5),
