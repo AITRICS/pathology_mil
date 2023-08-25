@@ -48,7 +48,7 @@ parser.add_argument('--train-instance', default='intrainstance_cosine', choices=
                                                                                 'interinstance_vc','interinstance_cosine', 'intrainstance_vc',
                                                                                 'intrainstance_cosine'], type=str, help='instance loss type')
 parser.add_argument('--ic-num-head', default=5, type=int, help='# of projection head for each instance token')
-parser.add_argument('--ic-depth', default=2, choices=[0,1,2], type=int, help='layer number of projection head for instance tokens')
+parser.add_argument('--ic-depth', default=2, choices=[0,1,2,3,4], type=int, help='layer number of projection head for instance tokens')
 parser.add_argument('--weight-agree', default=1.0, type=float, help='weight for the agree loss, eg, center, cosine')
 parser.add_argument('--weight-disagree', default=1.0, type=float, help='weight for the disagree loss, eg, variance loss, contrastive')
 parser.add_argument('--weight-cov', default=1.0, type=float, help='weight for the covariance loss')
@@ -76,7 +76,7 @@ def run_fold(args, fold, txt_name) -> Tuple:
     dataset_val = Dataset_pkl(path_pretrained_pkl_root=args.data_root, fold_now=fold, fold_all=args.fold, shuffle_slide=True, shuffle_patch=True, split='val', num_classes=args.num_classes, seed=args.seed)
     loader_val = torch.utils.data.DataLoader(dataset_val, batch_size=args.batch_size, shuffle=False, num_workers=args.workers, pin_memory=True)
       
-    model = milmodels.__dict__[args.mil_model](args=args, ma_dim_in=512).cuda()
+    model = milmodels.__dict__[args.mil_model](args=args, ma_dim_in=512 if args.dataset == 'tcga_lung' else 2048).cuda()
     
     auc_best = 0.0
     epoch_best = 0

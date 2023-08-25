@@ -2,7 +2,7 @@
 ## nc --> negative centroid
 
 gpu=0
-data_root=/mnt/aitrics_ext/ext01/shared/tcgalung_dsmil
+data_root=/mnt/aitrics_ext/ext02/shared/tcgalung_dsmil
 # single도 해볼 수 있음
 scheduler_centroid=single
 dataset=tcga_lung
@@ -22,7 +22,7 @@ optimizer_nc=adamw
 lr=0.003
 lr_center=0.0001
 # Dtfd, Attention, GatedAttention 가능
-mil_model=Attention
+mil_model=GatedAttention
 
 # 이렇게 하면 8개 돔. gpu 0부터 시작
 for lr in 0.01 0.003 0.001 0.0003; do
