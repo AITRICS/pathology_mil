@@ -396,14 +396,14 @@ class MilBase(nn.Module):
     def interinstance_vic(self, p: torch.Tensor, target=0):
 # self.negative_centroid = nn.Parameter(torch.zeros((1, dim_negative_centroid), requires_grad=True).cuda())
         if self.args.num_classes == 1:
-            return self._interinstance_vi(p, self.negative_centroid, target)
+            return self._interinstance_vic(p, self.negative_centroid, target)
         elif self.args.num_classes > 1:
             loss=0
             # p: Length_sequence x (128 * args.num_classes)
             _p = torch.stack(torch.split(p, [self.ic_dim_out]*self.args.num_classes, dim=1), 2)
             # _p: Length_sequence x 128 x args.num_classes
             for idx in range(self.args.num_classes):
-                loss += self._interinstance_vi(_p[:,:,idx], self.negative_centroid[idx:(idx+1), :], 1 if target==idx else 0)
+                loss += self._interinstance_vic(_p[:,:,idx], self.negative_centroid[idx:(idx+1), :], 1 if target==idx else 0)
             # _nc = F.normalize(self.negative_centroid, dim=1, eps=1e-8)
             # loss_centroid = (_nc@_nc.T).fill_diagonal_(0)
             # loss += torch.sum(loss_centroid)/(self.args.num_classes*(self.args.num_classes-1))
