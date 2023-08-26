@@ -155,7 +155,7 @@ if __name__ == '__main__':
     # txt_name = f'{args.dataset}_{args.pretrain_type}_downstreamLR_{args.lr}_optimizer_{args.optimizer}_epoch{args.epochs}_wd{args.weight_decay}'    
     txt_name = f'{datetime.today().strftime("%m%d")}_{args.dataset}_{args.mil_model}_scheduler_centroid{args.scheduler_centroid}_train_instance{args.train_instance}' +\
     f'_ic_num_head{args.ic_num_head}_ic_depth{args.ic_depth}_optimizer_nc{args.optimizer_nc}' +\
-    f'_weight_agree{args.weight_agree}_weight_disagree{args.weight_disagree}_weight_cov{args.weight_cov}_stddev_disagree{args.stddev_disagree}'
+    f'_weight_agree{args.weight_agree}_weight_disagree{args.weight_disagree}_weight_cov{args.weight_cov}_stddev_disagree{args.stddev_disagree}_passing_v{args.passing_v}'
     acc_fold_tr = []
     auc_fold_tr = []
 
