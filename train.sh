@@ -1,31 +1,31 @@
 gpu=0
-data_root=/mnt/aitrics_ext/ext01/shared/camelyon16_eosin_224_16_pkl_0524/swav_res50
+scheduler_centroid=single
+train_instance=interinstance_vi
+ic_num_head=1
+ic_depth=1
+weight_cov=0.0
+optimizer_nc=adamw
+
+########################################################
+
+# data_root=/mnt/aitrics_ext/ext01/shared/camelyon16_eosin_224_16_pkl_0524/swav_res50
 # maximoff
 # data_root=/mnt/aitrics_ext/ext02/camelyon16_eosin_224_16_pkl_0524/swav_res50
-# data_root=/mnt/aitrics_ext/ext01/shared/tcgalung_dsmil
+
+data_root=/mnt/aitrics_ext/ext01/shared/tcgalung_dsmil
 # maximoff
 # data_root=/mnt/aitrics_ext/ext02/shared/tcgalung_dsmil
-# single도 해볼 수 있음
-scheduler_centroid=single
+
 # dataset=tcga_lung
 dataset=CAMELYON16
-# None, intrainstance_divdis, interinstance_vc, interinstance_cosine, intrainstance_vc, intrainstance_cosine
-train_instance=interinstance_vi
-# intrainstance_divdis 하면 당연히 ic_num_head 1
-ic_num_head=1
-# intrainstance_divdis 하면 ic_num_head 1
-ic_depth=1
+
 weight_agree=10.0
 weight_disagree=10.0
-# 0도 해봄직
-weight_cov=0.0
 stddev_disagree=1.0
-# negative centroid 업데이트 방법: sgd, adamw, adam
-optimizer_nc=adamw
 lr=0.003
 lr_center=0.00001
 # Dtfd, Dsmil, Attention, GatedAttention 가능
-mil_model=Dsmil
+mil_model=Attention
 passing_v=1
 
 for lr_center in 0.0001 0.00001; do
