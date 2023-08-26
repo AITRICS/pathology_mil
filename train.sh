@@ -16,8 +16,8 @@ data_root=/mnt/aitrics_ext/ext01/shared/tcgalung_dsmil
 # maximoff
 # data_root=/mnt/aitrics_ext/ext02/shared/tcgalung_dsmil
 
-# dataset=tcga_lung
-dataset=CAMELYON16
+dataset=tcga_lung
+# dataset=CAMELYON16
 
 weight_agree=10.0
 weight_disagree=10.0
