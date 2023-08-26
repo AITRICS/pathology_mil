@@ -379,7 +379,7 @@ class MilBase(nn.Module):
             # print(f'var-min (neg): {torch.amin(torch.abs(dist_negative_centroid))}')
             # print(f'center location: {self.negative_centroid[:,:5]}')
             # return self.args.weight_agree * torch.mean(torch.sqrt(_negative_centroid.var(dim=0) + 0.00000001)) # var loss
-            return self.args.weight_agree * torch.mean(dist_negative_centroid.pow_(2)) # var loss
+            return self.args.weight_agree * dist_negative_centroid.pow_(2).sum().div((ls-1)*fs) # var loss
         elif target == 1:
             dist_negative_centroid = p - _negative_centroid.detach().expand(ls, -1) # _negative_centroid : Length_sequence x fs
             # print(f'var-mean (pos): {torch.mean(dist_negative_centroid)}')
