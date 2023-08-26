@@ -1,5 +1,6 @@
 
 from .mil_transformer import MilTransformer
+# from .abmil import Attention, GatedAttention, Attention_nocenter
 from .abmil import Attention, GatedAttention
 from .dsmil import Dsmil
 from .rnnmil import milrnn

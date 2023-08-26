@@ -7,10 +7,12 @@ from .milbase import MilBase
 class FCLayer(nn.Module):
     def __init__(self, in_size, out_size=1):
         super(FCLayer, self).__init__()
+        self.encoder = nn.Sequential(nn.Linear(in_size, in_size), nn.ReLU())
         self.fc = nn.Sequential(nn.Linear(in_size, out_size))
     def forward(self, feats):
-        x = self.fc(feats)
-        return feats, x
+        _feat_instance = self.encoder(feats)
+        x = self.fc(_feat_instance)
+        return _feat_instance, x
 
 class IClassifier(nn.Module):
     def __init__(self, feature_extractor, feature_size, output_class):
@@ -66,10 +68,11 @@ class BClassifier(nn.Module):
         C = self.fcc(B) # 1 x C x 1
         C = C.view(1, -1) # 1 x C
 
-        A_expand = A.unsqueeze(2).expand(-1, -1, self.input_size) # N C --> N C 1 --> N C V
-        V_expand = V.unsqueeze(1).expand(-1, self.output_class, -1) # N V --> N 1 V --> N C V
+        # A_expand = A.unsqueeze(2).expand(-1, -1, self.input_size) # N C --> N C 1 --> N C V
+        # V_expand = V.unsqueeze(1).expand(-1, self.output_class, -1) # N V --> N 1 V --> N C V
 
-        return C, A, B, (A_expand*V_expand).squeeze(1)
+        # return C, A, B, (A_expand*V_expand).squeeze(1)
+        return C, A, B
     
 class MILNet(nn.Module):
     def __init__(self, i_classifier, b_classifier):
@@ -78,9 +81,11 @@ class MILNet(nn.Module):
         self.b_classifier = b_classifier
         
     def forward(self, x):
-        feats, instance_logit_stream1 = self.i_classifier(x)
-        prediction_bag, A, B, feat_instance = self.b_classifier(feats, instance_logit_stream1)
+        feat_instance, instance_logit_stream1 = self.i_classifier(x)
+        # prediction_bag, A, B, feat_instance = self.b_classifier(feats, instance_logit_stream1)
+        prediction_bag, A, B = self.b_classifier(feat_instance, instance_logit_stream1)
         
+        # return instance_logit_stream1, prediction_bag, A, B, feat_instance
         return instance_logit_stream1, prediction_bag, A, B, feat_instance
         
 # args=args, optimizer=None, criterion=None, scheduler=None, dim_in=dim_in, dim_latent=512, dim_out=args.num_classes
@@ -88,13 +93,12 @@ class Dsmil(MilBase):
     def __init__(self, args, ma_dim_in):
         super().__init__(args=args, ma_dim_in=ma_dim_in, ic_dim_in=ma_dim_in)
         self.args=args
-        self.dim_in=2048
-        self.dim_out=args.output_bag_dim 
-        self.i_classifier = FCLayer(in_size=self.dim_in, out_size=self.dim_out)
-        self.b_classifier = BClassifier(input_size=self.dim_in, output_class=self.dim_out)
+        self.dim_out=args.num_classes 
+        self.i_classifier = FCLayer(in_size=ma_dim_in, out_size=self.dim_out)
+        self.b_classifier = BClassifier(input_size=ma_dim_in, output_class=self.dim_out, passing_v=True if args.passing_v==1 else False)
         self.milnet = MILNet(self.i_classifier, self.b_classifier)
-        self.optimizer={}
-        self.scheduler={}
+        # self.optimizer={}
+        # self.scheduler={}
 
         if args.train_instance == 'None':
             self.optimizer['mil_model'] = torch.optim.Adam(list(self.i_classifier.parameters())+list(self.b_classifier.parameters())+

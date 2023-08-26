@@ -36,6 +36,7 @@ import math
 #     and callable(models.__dict__[name]))
 # /nfs/strange/shared/hazel/stad_simclr_lr1/train
 parser = argparse.ArgumentParser(description='MIL Training') 
+# parser.add_argument('--data-root', default='/mnt/aitrics_ext/ext01/shared/camelyon16_eosin_224_16_pkl_0524/swav_res50', help='path to dataset')
 parser.add_argument('--data-root', default='/mnt/aitrics_ext/ext01/shared/tcgalung_dsmil', help='path to dataset')
 parser.add_argument('--fold', default=5, help='number of fold for cross validation')
 parser.add_argument('--workers', default=4, type=int, metavar='N', help='number of data loading workers (default: 1)')
@@ -43,21 +44,23 @@ parser.add_argument('--scheduler-centroid', default='single', choices=['None', '
 parser.add_argument('--batch-size', default=1, type=int, metavar='N', help='the total batch size on the current node (DDP)')
 parser.add_argument('--seed', default=1, type=int, help='seed for initializing training. ')
 
-parser.add_argument('--dataset', default='tcga_lung', choices=['CAMELYON16', 'tcga_lung', 'tcga_stad'], type=str, help='dataset type')
-parser.add_argument('--train-instance', default='intrainstance_cosine', choices=['None', 'semisup1', 'semisup2', 'intrainstance_divdis',
-                                                                                'interinstance_vc','interinstance_cosine', 'intrainstance_vc',
+parser.add_argument('--dataset', default='CAMELYON16', choices=['CAMELYON16', 'tcga_lung', 'tcga_stad'], type=str, help='dataset type')
+# parser.add_argument('--dataset', default='tcga_lung', choices=['CAMELYON16', 'tcga_lung', 'tcga_stad'], type=str, help='dataset type')
+parser.add_argument('--train-instance', default='interinstance_vic', choices=['None', 'semisup1', 'semisup2', 'divdis',
+                                                                                'interinstance_vi','interinstance_vic', 'intrainstance_vc',
                                                                                 'intrainstance_cosine'], type=str, help='instance loss type')
-parser.add_argument('--ic-num-head', default=5, type=int, help='# of projection head for each instance token')
-parser.add_argument('--ic-depth', default=2, choices=[0,1,2,3,4], type=int, help='layer number of projection head for instance tokens')
+parser.add_argument('--ic-num-head', default=1, type=int, help='# of projection head for each instance token')
+parser.add_argument('--ic-depth', default=1, choices=[0,1,2,3,4], type=int, help='layer number of projection head for instance tokens')
 parser.add_argument('--weight-agree', default=1.0, type=float, help='weight for the agree loss, eg, center, cosine')
 parser.add_argument('--weight-disagree', default=1.0, type=float, help='weight for the disagree loss, eg, variance loss, contrastive')
 parser.add_argument('--weight-cov', default=1.0, type=float, help='weight for the covariance loss')
 parser.add_argument('--stddev-disagree', default=1.0, type=float, help='std dev threshold for disagree loss')
 parser.add_argument('--optimizer-nc', default='adamw', choices=['sgd', 'adam', 'adamw'], type=str, help='optimizer for negative centroid')
-parser.add_argument('--lr', default=0.003, type=float, metavar='LR', help='initial learning rate', dest='lr')
+parser.add_argument('--lr', default=0.0003, type=float, metavar='LR', help='initial learning rate', dest='lr')
 # parser.add_argument('--lr-aux', default=0.001, type=float, help='initial learning rate')
 parser.add_argument('--lr-center', default=0.00001, type=float, help='initial learning rate')
 parser.add_argument('--mil-model', default='Attention', type=str, help='use pre-training method')
+parser.add_argument('--passing-v', default=1, choices=[0,1], type=int, help='passing_v for dsmil')
 
 parser.add_argument('--pushtoken', default=False, help='Push Bullet token')
 
