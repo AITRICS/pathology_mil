@@ -233,7 +233,7 @@ class MilBase(nn.Module):
 
         logit_dict = self.forward(X)
         loss_bag = self.criterion_bag(logit_dict['bag'], Y)
-        print(f'sup loss: {loss_bag.item()}')
+        # print(f'sup loss: {loss_bag.item()}')
         # if 'instance' in logit_dict.keys():
         if self.args.train_instance == 'None':
             return loss_bag
