@@ -304,7 +304,7 @@ class MilBase(nn.Module):
                     type1_pred = p[:, 1]
                     type0_prob = type0_pred.sigmoid()
                     type1_prob = type1_pred.sigmoid()
-                    labeled_loss = self.criterion(type0_prob, torch.zeros_like(type0_prob, device=type0_prob.get_device()))
+                    labeled_loss = self.criterion_bag(type0_prob, torch.zeros_like(type0_prob, device=type0_prob.get_device()))
                     
                     computed_instances_labels = torch.zeros(type1_pred.shape, device=p.get_device()).float()
                     mask_instances_labels = torch.zeros(type1_pred.shape, device=p.get_device()).float()
@@ -318,7 +318,7 @@ class MilBase(nn.Module):
                         mask_instances_labels[bottomk_idx] = 1.
                 
                 # calculate pseudo labeled loss
-                pl_loss = (self.criterion(type1_pred, computed_instances_labels) * mask_instances_labels).sum() / mask_instances_labels.sum()
+                pl_loss = (self.criterion_bag(type1_pred, computed_instances_labels) * mask_instances_labels).sum() / mask_instances_labels.sum()
                 
                 # weighting labeled loss            
                 # pl_loss = self.unlabeled_weight()*pl_loss

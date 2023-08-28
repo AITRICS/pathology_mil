@@ -166,7 +166,7 @@ if __name__ == '__main__':
 
     args.num_classes=2 if args.dataset=='tcga_lung' else 1
     # args.num_classes=1
-    args.output_bag_dim=1
+    args.output_bag_dim=2
     args.device = 0
 
     if args.mil_model == 'Dtfd':
