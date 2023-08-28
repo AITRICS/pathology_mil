@@ -426,19 +426,19 @@ class MilBase(nn.Module):
         if target == 0:
             dist_negative_centroid = p - _negative_centroid.expand(ls, -1) # _negative_centroid : Length_sequence x fs
             std = torch.sqrt(dist_negative_centroid.pow(2).sum(dim=0, keepdim=True).div(ls-1))
-            dist_negative_centroid_norm = dist_negative_centroid / std
-            corr = (dist_negative_centroid_norm.T @ dist_negative_centroid_norm) / (ls-1)
+            # dist_negative_centroid_norm = dist_negative_centroid / std
+            # corr = (dist_negative_centroid_norm.T @ dist_negative_centroid_norm) / (ls-1)
             # print(f'var-mean (neg): {torch.mean(dist_negative_centroid)}')
             # print(f'var-max (neg): {torch.amax(torch.abs(dist_negative_centroid))}')
             # print(f'var-min (neg): {torch.amin(torch.abs(dist_negative_centroid))}')
             # print(f'center location: {self.negative_centroid[:,:5]}')
             # return self.args.weight_agree * torch.mean(torch.sqrt(_negative_centroid.var(dim=0) + 0.00000001)) # var loss
             neg = dist_negative_centroid.pow(2).sum().div((ls-1)*fs)
-            cov = self.off_diagonal(corr).pow(2).mean()
+            # cov = self.off_diagonal(corr).pow(2).mean()
             # print(f'corr: {cov}')
             # print(f'neg: {neg}')
             # print(f'neg std: {_negative_std}')
-            return (self.args.weight_cov * cov) + (self.args.weight_agree * neg) + torch.exp(_negative_std-std.detach()).mean() # var loss
+            return (self.args.weight_agree * neg) + torch.exp(_negative_std-std.detach()).mean() # var loss
         elif target == 1:
             dist_negative_centroid = p - _negative_centroid.detach().expand(ls, -1) # _negative_centroid : Length_sequence x fs
             # print(f'var-mean (pos): {torch.mean(dist_negative_centroid)}')
