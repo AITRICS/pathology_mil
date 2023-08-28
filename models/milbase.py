@@ -23,6 +23,37 @@ class Classifier_instance(nn.Module):
                                     ))
                 self.fc = nn.ModuleList(_temp)
 
+        elif layer_depth == 3:
+            _temp = []
+            for i in range(num_head):
+                _temp.append(nn.Sequential(
+                                        nn.Linear(dim_in, dim_in),
+                                        nn.LayerNorm(dim_in),
+                                        nn.ReLU(),
+                                        nn.Linear(dim_in, dim_in),
+                                        nn.LayerNorm(dim_in),
+                                        nn.ReLU(),
+                                        nn.Linear(dim_in, dim_out)
+                                    ))
+                self.fc = nn.ModuleList(_temp)
+
+        elif layer_depth == 4:
+            _temp = []
+            for i in range(num_head):
+                _temp.append(nn.Sequential(
+                                        nn.Linear(dim_in, dim_in),
+                                        nn.LayerNorm(dim_in),
+                                        nn.ReLU(),
+                                        nn.Linear(dim_in, dim_in),
+                                        nn.LayerNorm(dim_in),
+                                        nn.ReLU(),
+                                        nn.Linear(dim_in, dim_in),
+                                        nn.LayerNorm(dim_in),
+                                        nn.ReLU(),
+                                        nn.Linear(dim_in, dim_out)
+                                    ))
+                self.fc = nn.ModuleList(_temp)
+
         elif layer_depth == 1:    
             _temp = []
             for i in range(num_head):
@@ -74,8 +105,8 @@ class MilBase(nn.Module):
                             (None)
                             semisup1
                             semisup2
-                            intrainstance_divdis
-                            interinstance_vc
+                            divdis
+                            interinstance_vi
                             interinstance_cosine
                             intrainstance_vc
                             intrainstance_cosine
@@ -93,27 +124,38 @@ class MilBase(nn.Module):
         self.optimizer = {}
         self.scheduler = {}
         self.ma_dim_in = ma_dim_in
-        self.alpha = args.alpha
-        self.beta = args.beta
-        self.dataset = args.dataset
+        self.var_pos=[]
+        self.var_neg=[]
+
+        # 더 이상 사용 안함
+        assert 'intra' not in args.train_instance
+
+        if args.ic_depth == 0:
+            ic_dim_out = ic_dim_in
         
         if 'instance' in args.train_instance:
-            if args.ic_depth == 0:
-                ic_dim_out = ic_dim_in
-                assert args.ic_num_head == 1
-            else:
-                ic_dim_out = 128
+            assert args.ic_depth > 0
+            assert args.ic_num_head == 1
+            ic_dim_out = 128
+            # if args.ic_depth == 0:
+            #     ic_dim_out = ic_dim_in
+            #     assert args.ic_num_head == 1
+            # else:
+            #     ic_dim_out = 128
         else:
             ic_dim_out = args.num_classes
+        
+        self.ic_dim_out = ic_dim_out
+        self.cs = torch.nn.CosineSimilarity(dim=0)
 
         if criterion is not None:
             self.criterion_bag = criterion
         else:
-            self.criterion_bag = nn.BCEWithLogitsLoss()        
+            self.criterion_bag = nn.BCEWithLogitsLoss()
         self.sigmoid = nn.Sigmoid()
 
         if args.train_instance != 'None':
-            self.instance_classifier = Classifier_instance(dim_in=ic_dim_in, dim_out=ic_dim_out, layer_depth=args.ic_depth, num_head=args.ic_num_head)
+            self.instance_classifier = Classifier_instance(dim_in=ic_dim_in, dim_out=ic_dim_out*args.num_classes, layer_depth=args.ic_depth, num_head=args.ic_num_head)
             self.set_negative_centroid(args=args, dim_negative_centroid=ic_dim_out)
 
         if args.train_instance=='intrainstance_cosine':
@@ -122,16 +164,17 @@ class MilBase(nn.Module):
 
     def set_negative_centroid(self, args, dim_negative_centroid):
 
-        if (args.train_instance == 'interinstance_vc') or (args.train_instance == 'intrainstance_vc'):
-            self.negative_centroid = nn.Parameter(torch.zeros((1, dim_negative_centroid), requires_grad=True).cuda())
+        if ('interinstance_vi' in args.train_instance) or (args.train_instance == 'intrainstance_vc'):
+            self.negative_centroid = nn.Parameter(torch.zeros((args.num_classes, dim_negative_centroid), requires_grad=True).cuda())
+            self.negative_std = nn.Parameter(torch.ones((args.num_classes, dim_negative_centroid), requires_grad=True).cuda()*0.1)
         elif (args.train_instance == 'interinstance_cosine') or (args.train_instance=='intrainstance_cosine'):
-            self.negative_centroid = nn.Parameter(torch.zeros(dim_negative_centroid, requires_grad=True).cuda())
+            self.negative_centroid = nn.Parameter(torch.zeros((args.num_classes, dim_negative_centroid), requires_grad=True).cuda())
 
         if hasattr(self, 'negative_centroid'):
             if self.args.optimizer_nc == 'adam':
                 self.optimizer['negative_centroid'] = optim.Adam(params=[self.negative_centroid], lr=self.args.lr_center, weight_decay=0.0)
             elif self.args.optimizer_nc == 'adamw':
-                self.optimizer['negative_centroid'] = optim.AdamW(params=[self.negative_centroid], lr=self.args.lr_center, weight_decay=0.0)
+                self.optimizer['negative_centroid'] = optim.AdamW(params=[self.negative_centroid]+[self.negative_std], lr=self.args.lr_center, weight_decay=0.0)
             elif self.args.optimizer_nc == 'sgd':
                 self.optimizer['negative_centroid'] = optim.SGD(params=[self.negative_centroid], lr=self.args.lr_center, weight_decay=0.0)
 
@@ -192,7 +235,7 @@ class MilBase(nn.Module):
         logit_dict = self.forward(X)
         # print(logit_dict['bag'].shape)
         loss_bag = self.criterion_bag(logit_dict['bag'], Y)
-
+        # print(f'sup loss: {loss_bag.item()}')
         # if 'instance' in logit_dict.keys():
         if self.args.train_instance == 'None':
             return loss_bag
@@ -217,7 +260,7 @@ class MilBase(nn.Module):
         
         for _optim in self.optimizer.values():
             _optim.step()
-
+        # print(f'lr: {self.optimizer["negative_centroid"].param_groups[0]["lr"]}')
         
         for _scheduler in self.scheduler.values():
             _scheduler.step()
@@ -340,7 +383,7 @@ class MilBase(nn.Module):
         pass
 
 
-    def intrainstance_divdis(self, p: torch.Tensor, target=0):
+    def divdis(self, p: torch.Tensor, target=0):
         """
         p: #instances x ic_dim_out x Head_num
         ic_dim_out == args.num_classes
@@ -374,8 +417,26 @@ class MilBase(nn.Module):
 
             return repulsion_loss
     
-
-    def interinstance_vc(self, p: torch.Tensor, target=0):
+    def interinstance_vi(self, p: torch.Tensor, target=0):
+# self.negative_centroid = nn.Parameter(torch.zeros((1, dim_negative_centroid), requires_grad=True).cuda())
+        if self.args.num_classes == 1:
+            return self._interinstance_vi(p, self.negative_centroid, target)
+        elif self.args.num_classes > 1:
+            loss=0
+            # p: Length_sequence x (128 * args.num_classes)
+            _p = torch.stack(torch.split(p, [self.ic_dim_out]*self.args.num_classes, dim=1), 2)
+            # _p: Length_sequence x 128 x args.num_classes
+            for idx in range(self.args.num_classes):
+                loss += self._interinstance_vi(_p[:,:,idx], self.negative_centroid[idx:(idx+1), :], 1 if target==idx else 0)
+            # _nc = F.normalize(self.negative_centroid, dim=1, eps=1e-8)
+            # loss_centroid = (_nc@_nc.T).fill_diagonal_(0)
+            # loss += torch.sum(loss_centroid)/(self.args.num_classes*(self.args.num_classes-1))
+            return loss
+        else:
+            raise ValueError('invalid self.args.num_classes')
+        
+        
+    def _interinstance_vi(self, p: torch.Tensor, _negative_centroid: torch.Tensor, target=0):
         """
         1) center(negative)/variance(positive) + 2) Covariance
  
@@ -384,117 +445,89 @@ class MilBase(nn.Module):
 
         ls, fs = p.shape
         _p = p - p.mean(dim=0)
-        # loss_variance = torch.mean(F.relu(1.0 - torch.sqrt(p.var(dim=0) + 0.00001)))
-        _p = F.normalize(_p, dim=1, eps=1e-8)
-        cov = (_p.T @ _p) / (ls - 1.0)
-        loss = self.args.weight_cov*(self.off_diagonal(cov).pow_(2).sum().div(fs)) # covariance loss
-
-        # print(f'==================================')
-        # print(f'cov: {self.off_diagonal(cov).pow_(2).sum().div(fs) }')
+        # cross-correlation 해야할것 같지만 시간 없음
 
         if target == 0:
-            _negative_centroid = p - self.negative_centroid.expand(ls, -1) # _negative_centroid : Length_sequence x fs
-            loss += self.args.weight_agree * torch.mean(torch.sqrt(_negative_centroid.var(dim=0) + 0.00001)) # var loss
-            # print(f'var: {self.args.weight_agree * torch.mean(torch.sqrt(_negative_centroid.var(dim=0) + 0.00001))}')
-            # print(f'center location: {self.negative_centroid[0,:5]}')
+            dist_negative_centroid = p - _negative_centroid.expand(ls, -1) # _negative_centroid : Length_sequence x fs
+            # print(f'var-mean (neg): {torch.mean(dist_negative_centroid)}')
+            # print(f'var-max (neg): {torch.amax(torch.abs(dist_negative_centroid))}')
+            # print(f'var-min (neg): {torch.amin(torch.abs(dist_negative_centroid))}')
+            # print(f'center location: {self.negative_centroid[:,:5]}')
+            # return self.args.weight_agree * torch.mean(torch.sqrt(_negative_centroid.var(dim=0) + 0.00000001)) # var loss
+            return self.args.weight_agree * dist_negative_centroid.pow_(2).sum().div((ls-1)*fs) # var loss
         elif target == 1:
-            loss += self.args.weight_disagree * torch.mean(F.relu(self.args.stddev_disagree - torch.sqrt(_p.var(dim=0) + 0.00001))) # variance
-            # print(f'variance: {self.args.weight_disagree * torch.mean(F.relu(self.args.stddev_disagree - torch.sqrt(_p.var(dim=0) + 0.00001)))}')
-            # print(f'max variance: {torch.amax(_p.var(dim=0))}')
+            dist_negative_centroid = p - _negative_centroid.detach().expand(ls, -1) # _negative_centroid : Length_sequence x fs
+            # print(f'var-mean (pos): {torch.mean(dist_negative_centroid)}')
+            # print(f'var-max (pos): {torch.amax(torch.abs(dist_negative_centroid))}')
+            # print(f'var-min (pos): {torch.amin(torch.abs(dist_negative_centroid))}')
+            # return self.args.weight_disagree * torch.mean(F.relu(self.args.stddev_disagree - torch.sqrt(_p.var(dim=0) + 0.00000001))) # variance
+            # return -self.args.weight_disagree * torch.mean(dist_negative_centroid.pow_(2)) # variance
+            # return self.args.weight_disagree * torch.mean(F.relu(self.args.stddev_disagree - torch.mean(dist_negative_centroid.pow_(2), dim=0))) # variance
+            return self.args.weight_disagree * torch.mean(F.relu(self.args.stddev_disagree - dist_negative_centroid.pow_(2).sum(dim=0)/(ls-1))) # variance
 
-        return loss
+        # return loss
 
-    def interinstance_cosine(self, p: torch.Tensor, target=0):
+
+    def interinstance_vic(self, p: torch.Tensor, target=0):
+# self.negative_centroid = nn.Parameter(torch.zeros((1, dim_negative_centroid), requires_grad=True).cuda())
+        if self.args.num_classes == 1:
+            return self._interinstance_vic(p, self.negative_centroid, self.negative_std, target)
+        elif self.args.num_classes > 1:
+            loss=0
+            # p: Length_sequence x (128 * args.num_classes)
+            _p = torch.stack(torch.split(p, [self.ic_dim_out]*self.args.num_classes, dim=1), 2)
+            # _p: Length_sequence x 128 x args.num_classes
+            for idx in range(self.args.num_classes):
+                loss += self._interinstance_vic(_p[:,:,idx], self.negative_centroid[idx:(idx+1), :], self.negative_std[idx:(idx+1), :], 1 if target==idx else 0)
+            # _nc = F.normalize(self.negative_centroid, dim=1, eps=1e-8)
+            # loss_centroid = (_nc@_nc.T).fill_diagonal_(0)
+            # loss += torch.sum(loss_centroid)/(self.args.num_classes*(self.args.num_classes-1))
+            return loss
+        else:
+            raise ValueError('invalid self.args.num_classes')
+        
+        
+    def _interinstance_vic(self, p: torch.Tensor, _negative_centroid: torch.Tensor, _negative_std: torch.Tensor, target=0):
         """
-        1) cosine(negative)/variance(positive) + 2) Covariance
+        1) center(negative)/variance(positive) + 2) Covariance
  
         p: Length_sequence x fs
         """
+
         ls, fs = p.shape
-        p_n = F.normalize(p, dim=1, eps=1e-8)
-        _p = p - p.mean(dim=0)
-        # loss_variance = torch.mean(F.relu(1.0 - torch.sqrt(p.var(dim=0) + 0.00001)))
-        _p = F.normalize(_p, dim=1, eps=1e-8)
-        cov = (_p.T @ _p) / (ls - 1.0)
-        loss = self.args.weight_cov*(self.off_diagonal(cov).pow_(2).sum().div(fs)) # covariance loss
-        
-        # print(f'==================================')
-        # print(f'cov: {self.off_diagonal(cov).pow_(2).sum().div(fs) }')
+        # _p = p - p.mean(dim=0)
 
         if target == 0:
-            _negative_centroid = F.normalize(self.negative_centroid, dim=0, eps=1e-8) # _negative_centroid : fs
-            p = F.normalize(p, dim=1, eps=1e-8)
-            loss -= self.args.weight_agree * torch.mean(p @ _negative_centroid) # cosine loss
-            # print(f'cosine - neg: {self.args.weight_agree * torch.mean(p @ _negative_centroid)}')
-            # print(f'cosine location: {self.negative_centroid[:5]}')
+            dist_negative_centroid = p - _negative_centroid.expand(ls, -1) # _negative_centroid : Length_sequence x fs
+            std = torch.sqrt(dist_negative_centroid.pow(2).sum(dim=0, keepdim=True).div(ls-1))
+            dist_negative_centroid_norm = dist_negative_centroid / std
+            corr = (dist_negative_centroid_norm.T @ dist_negative_centroid_norm) / (ls-1)
+            # print(f'var-mean (neg): {torch.mean(dist_negative_centroid)}')
+            # print(f'var-max (neg): {torch.amax(torch.abs(dist_negative_centroid))}')
+            # print(f'var-min (neg): {torch.amin(torch.abs(dist_negative_centroid))}')
+            # print(f'center location: {self.negative_centroid[:,:5]}')
+            # return self.args.weight_agree * torch.mean(torch.sqrt(_negative_centroid.var(dim=0) + 0.00000001)) # var loss
+            neg = dist_negative_centroid.pow(2).sum().div((ls-1)*fs)
+            cov = self.off_diagonal(corr).pow(2).mean()
+            # print(f'corr: {cov}')
+            # print(f'neg: {neg}')
+            # print(f'neg std: {_negative_std}')
+            return (self.args.weight_cov * cov) + (self.args.weight_agree * neg) + torch.exp(_negative_std-std.detach()).mean() # var loss
         elif target == 1:
-            loss += self.args.weight_disagree * torch.sum((p_n @ p_n.T).fill_diagonal_(0))/(ls*(ls-1.0))
-            # print(f'cosine - pos: {self.args.weight_disagree * torch.sum((p_n @ p_n.T).fill_diagonal_(0))/(ls*(ls-1.0))}')
-            # print(f'max variance: {torch.amax(p_n.var(dim=0))}')
+            dist_negative_centroid = p - _negative_centroid.detach().expand(ls, -1) # _negative_centroid : Length_sequence x fs
+            # print(f'var-mean (pos): {torch.mean(dist_negative_centroid)}')
+            # print(f'var-max (pos): {torch.amax(torch.abs(dist_negative_centroid))}')
+            # print(f'var-min (pos): {torch.amin(torch.abs(dist_negative_centroid))}')
+            # return self.args.weight_disagree * torch.mean(F.relu(self.args.stddev_disagree - torch.sqrt(_p.var(dim=0) + 0.00000001))) # variance
+            # return -self.args.weight_disagree * torch.mean(dist_negative_centroid.pow_(2)) # variance
+            # return self.args.weight_disagree * torch.mean(F.relu(self.args.stddev_disagree - torch.mean(dist_negative_centroid.pow_(2), dim=0))) # variance
+            # pos = torch.mean(F.relu(self.args.stddev_disagree - dist_negative_centroid.pow_(2).sum(dim=0)/(ls-1)))
+            pos = torch.mean(F.relu(2.0*_negative_std.squeeze(0).detach() - dist_negative_centroid.pow_(2).sum(dim=0)/(ls-1)))
+            # print(f'pos: {pos}')
+            return self.args.weight_disagree * pos # variance
 
-        return loss
-    
-    def intrainstance_vc(self, p: torch.Tensor, target=0):
-        """
-        1) cosine(negative)/variance(positive) + 2) Covariance
- 
-        p: #instances x ic_dim_out x Head_num
-        """
-        
-        ls, fs, hn = p.shape
-        p_whiten_head = p - p.mean(dim=2, keepdim=True) # Length_sequence x fs x Head_num
-        p_whiten = p - p.mean(dim=(0,2), keepdim=True) # Length_sequence x fs x Head_num
-        # p_whiten_merged = torch.transpose(p_whiten, 1, 2).view(ls*hn, fs) # (Length_sequence x Head_num) x fs
-        p_whiten_merged = rearrange(torch.transpose(p_whiten, 1, 2).contiguous(), "l h f -> (l h) f") # p_whiten_merged: (Length_sequence x Head_num) x fs
-        p_whiten_merged = F.normalize(p_whiten_merged, dim=1, eps=1e-8)
-        
-        cov = (p_whiten_merged.T @ p_whiten_merged) / ((ls*hn) - 1.0)
-        loss = self.args.weight_cov*(self.off_diagonal(cov).pow_(2).sum().div(fs)) # covariance loss
-        # print(f'==================================')
-        # print(f'cov: {self.args.weight_cov*(self.off_diagonal(cov).pow_(2).sum().div(fs))}')
-        if target == 0:
-            _negative_centroid = self.negative_centroid.expand(ls*hn, fs) # _negative_centroid : (Length_sequence x Head_num) x fs 
-            loss += self.args.weight_agree * torch.mean(torch.sqrt((p_whiten_merged - _negative_centroid).var(dim=0, keepdim=False) + 0.00001))
-            # print(f'var_neg: {self.args.weight_agree * torch.mean(torch.sqrt((p_whiten_merged - _negative_centroid).var(dim=0, keepdim=False) + 0.00001))}')
-            # print(f'negative center location: {self.negative_centroid[0,:5]}')
-            
-        elif target == 1:
-            loss += self.args.weight_disagree * torch.mean(F.relu(self.args.stddev_disagree - torch.sqrt(p_whiten_head.var(dim=2) + 0.00001))) # standard deviation
-            # print(f'variance: {self.args.weight_disagree * torch.mean(F.relu(self.args.stddev_disagree - torch.sqrt(p_whiten_head.var(dim=2) + 0.00001)))}')
-            # print(f'max variance: {torch.amax(p_whiten_head.var(dim=2))}')
-        # print(f'weight: {[f[0].weight[0,0].item() for f in self.instance_classifier.fc]}')
-        return loss
+        # return loss
 
-    def intrainstance_cosine(self, p: torch.Tensor, target=0):
-        """
-        1) cosine(negative)/variance(positive) + 2) Covariance
- 
-        p: #instances x ic_dim_out x Head_num
-        """
-        
-        ls, fs, hn = p.shape
-        p_t = torch.transpose(p, 1, 2) # Length_sequence x Head_num x fs
-        p_whiten = p - p.mean(dim=(0,2), keepdim=True) # Length_sequence x fs x Head_num
-        # p_whiten_merged = torch.transpose(p_whiten, 1, 2).view(ls*hn, fs) # (Length_sequence x Head_num) x fs
-        p_whiten_merged = rearrange(torch.transpose(p_whiten, 1, 2).contiguous(), "l h f -> (l h) f") # p_whiten_merged: (Length_sequence x Head_num) x fs
-        p_whiten_merged = F.normalize(p_whiten_merged, dim=1, eps=1e-8)
-        cov = (p_whiten_merged.T @ p_whiten_merged) / ((ls*hn) - 1.0)
-        loss = self.args.weight_cov*(self.off_diagonal(cov).pow_(2).sum().div(fs)) # covariance loss
-        # print(f'==================================')
-        # print(f'cov: {self.args.weight_cov*(self.off_diagonal(cov).pow_(2).sum().div(fs))}')
-
-        if target == 0:
-            _negative_centroid = F.normalize(self.negative_centroid, dim=0, eps=1e-8) # _negative_centroid : fs
-            p = F.normalize(p_t, dim=2, eps=1e-8) # p: Length_sequence x Head_num x fs
-            loss -= self.args.weight_agree * torch.mean(p @ _negative_centroid) # Length_sequence x Head_num
-            # print(f'cosine loss: {self.args.weight_agree * torch.mean(p @ _negative_centroid)}')
-            # print(f'center location: {self.negative_centroid[:5]}')
-        elif target == 1:
-            loss += self.args.weight_disagree * torch.sum(torch.bmm(F.normalize(p_t, dim=2, eps=1e-8), F.normalize(p, dim=1, eps=1e-8)) * self.mask_diag)/(ls*hn*(hn-1.0))
-            # print(f'variance: {self.args.weight_disagree * torch.sum(torch.bmm(F.normalize(p_t, dim=2, eps=1e-8), F.normalize(p, dim=1, eps=1e-8)) * self.mask_diag)/(ls*hn*(hn-1.0))}')
-            # print(f'max variance: {torch.amax(F.normalize(p, dim=1, eps=1e-8).var(dim=2))}')
-
-        return loss
 
     def off_diagonal(self, x):
         n, m = x.shape

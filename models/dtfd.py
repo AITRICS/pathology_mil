@@ -128,10 +128,10 @@ class Dtfd(MilBase):
         mDim=512
         self.numGroup = 5
         self.instance_per_group = 1
-        self.classifier = Classifier_1fc(mDim, args.output_bag_dim, 0)
+        self.classifier = Classifier_1fc(mDim, args.num_classes, 0)
         self.attention = Attention_Gated(mDim)
         self.dimReduction = DimReduction(n_channels=ma_dim_in, m_dim=mDim, numLayer_Res=0)
-        self.UClassifier = Attention_with_Classifier(L=mDim, num_cls=args.output_bag_dim, droprate=0)
+        self.UClassifier = Attention_with_Classifier(L=mDim, num_cls=args.num_classes, droprate=0)
         self.distill = 'AFS'
         self.grad_clipping = 5
         self.device = args.device
@@ -188,7 +188,7 @@ class Dtfd(MilBase):
                 slide_pseudo_feat.append(af_inst_feat)
                 
         slide_pseudo_feat = torch.cat(slide_pseudo_feat, dim=0)  ### numGroup x fs
-        slide_sub_preds = torch.cat(slide_sub_preds, dim=0) ### numGroup x args.output_bag_dim
+        slide_sub_preds = torch.cat(slide_sub_preds, dim=0) ### numGroup x args.num_classes
         instance_pseudo_feat = torch.cat(instance_pseudo_feat, dim=0) ### num_patch x fs
         
         return slide_pseudo_feat, slide_sub_preds, instance_pseudo_feat
@@ -201,7 +201,7 @@ class Dtfd(MilBase):
 
         if self.args.train_instance != 'None':
             logit_instances = self.instance_classifier(feat_instances)
-            # logit_bag: #bags x args.output_bag_dim     logit_instances: #instances x ic_dim_out (x Head_num)
+            # logit_bag: #bags x args.num_classes     logit_instances: #instances x ic_dim_out (x Head_num)
             # 아직 확인 못함
             return {'bag': logit_bag, 'pseudo_bag': logit_pseudo_bag, 'instance': logit_instances}
         else:       

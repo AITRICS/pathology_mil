@@ -36,7 +36,8 @@ import math
 #     and callable(models.__dict__[name]))
 # /nfs/strange/shared/hazel/stad_simclr_lr1/train
 parser = argparse.ArgumentParser(description='MIL Training') 
-parser.add_argument('--data-root', default='/mnt/aitrics_ext/ext01/shared/camelyon16_eosin_224_16_pkl_0524/swav_res50', help='path to dataset')
+# parser.add_argument('--data-root', default='/mnt/aitrics_ext/ext01/shared/camelyon16_eosin_224_16_pkl_0524/swav_res50', help='path to dataset')
+parser.add_argument('--data-root', default='/mnt/aitrics_ext/ext01/shared/tcgalung_dsmil', help='path to dataset')
 parser.add_argument('--fold', default=5, help='number of fold for cross validation')
 parser.add_argument('--workers', default=4, type=int, metavar='N', help='number of data loading workers (default: 1)')
 parser.add_argument('--scheduler-centroid', default='single', choices=['None', 'single', 'multi'], type=str, help='loss scheduler')
@@ -44,20 +45,22 @@ parser.add_argument('--batch-size', default=1, type=int, metavar='N', help='the 
 parser.add_argument('--seed', default=1, type=int, help='seed for initializing training. ')
 
 parser.add_argument('--dataset', default='CAMELYON16', choices=['CAMELYON16', 'tcga_lung', 'tcga_stad'], type=str, help='dataset type')
-parser.add_argument('--train-instance', default='None', choices=['None', 'semisup1', 'semisup2', 'intrainstance_divdis',
-                                                                                'interinstance_vc','interinstance_cosine', 'intrainstance_vc',
+# parser.add_argument('--dataset', default='tcga_lung', choices=['CAMELYON16', 'tcga_lung', 'tcga_stad'], type=str, help='dataset type')
+parser.add_argument('--train-instance', default='interinstance_vic', choices=['None', 'semisup1', 'semisup2', 'divdis',
+                                                                                'interinstance_vi','interinstance_vic', 'intrainstance_vc',
                                                                                 'intrainstance_cosine'], type=str, help='instance loss type')
-parser.add_argument('--ic-num-head', default=5, type=int, help='# of projection head for each instance token')
-parser.add_argument('--ic-depth', default=2, choices=[0,1,2], type=int, help='layer number of projection head for instance tokens')
+parser.add_argument('--ic-num-head', default=1, type=int, help='# of projection head for each instance token')
+parser.add_argument('--ic-depth', default=1, choices=[0,1,2,3,4], type=int, help='layer number of projection head for instance tokens')
 parser.add_argument('--weight-agree', default=1.0, type=float, help='weight for the agree loss, eg, center, cosine')
 parser.add_argument('--weight-disagree', default=1.0, type=float, help='weight for the disagree loss, eg, variance loss, contrastive')
 parser.add_argument('--weight-cov', default=1.0, type=float, help='weight for the covariance loss')
 parser.add_argument('--stddev-disagree', default=1.0, type=float, help='std dev threshold for disagree loss')
-parser.add_argument('--optimizer-nc', default='sgd', choices=['sgd', 'adam', 'adamw'], type=str, help='optimizer for negative centroid')
-parser.add_argument('--lr', default=0.003, type=float, metavar='LR', help='initial learning rate', dest='lr')
+parser.add_argument('--optimizer-nc', default='adamw', choices=['sgd', 'adam', 'adamw'], type=str, help='optimizer for negative centroid')
+parser.add_argument('--lr', default=0.0003, type=float, metavar='LR', help='initial learning rate', dest='lr')
 # parser.add_argument('--lr-aux', default=0.001, type=float, help='initial learning rate')
-parser.add_argument('--lr-center', default=0.001, type=float, help='initial learning rate')
-parser.add_argument('--mil-model', default='Dsmil', type=str, help='use pre-training method')
+parser.add_argument('--lr-center', default=0.00001, type=float, help='initial learning rate')
+parser.add_argument('--mil-model', default='Attention', type=str, help='use pre-training method')
+parser.add_argument('--passing-v', default=1, choices=[0,1], type=int, help='passing_v for dsmil')
 
 parser.add_argument('--pushtoken', default=False, help='Push Bullet token')
 parser.add_argument('--alpha', default=0.1, type=float, help='ratio for pseudo positive sample')
@@ -78,7 +81,7 @@ def run_fold(args, fold, txt_name) -> Tuple:
     dataset_val = Dataset_pkl(path_pretrained_pkl_root=args.data_root, fold_now=fold, fold_all=args.fold, shuffle_slide=True, shuffle_patch=True, split='val', num_classes=args.num_classes, seed=args.seed)
     loader_val = torch.utils.data.DataLoader(dataset_val, batch_size=args.batch_size, shuffle=False, num_workers=args.workers, pin_memory=True)
       
-    model = milmodels.__dict__[args.mil_model](args=args, ma_dim_in=2048).cuda()
+    model = milmodels.__dict__[args.mil_model](args=args, ma_dim_in=512 if args.dataset == 'tcga_lung' else 2048).cuda()
     
     auc_best = 0.0
     epoch_best = 0
@@ -154,7 +157,7 @@ if __name__ == '__main__':
     # txt_name = f'{args.dataset}_{args.pretrain_type}_downstreamLR_{args.lr}_optimizer_{args.optimizer}_epoch{args.epochs}_wd{args.weight_decay}'    
     txt_name = f'{datetime.today().strftime("%m%d")}_{args.dataset}_{args.mil_model}_scheduler_centroid{args.scheduler_centroid}_train_instance_{args.train_instance}' +\
     f'_ic_num_head{args.ic_num_head}_ic_depth{args.ic_depth}_optimizer_nc{args.optimizer_nc}' +\
-    f'_weight_agree{args.weight_agree}_weight_disagree{args.weight_disagree}_weight_cov{args.weight_cov}_stddev_disagree{args.stddev_disagree}'
+    f'_weight_agree{args.weight_agree}_weight_disagree{args.weight_disagree}_weight_cov{args.weight_cov}_stddev_disagree{args.stddev_disagree}_passing_v{args.passing_v}'
     acc_fold_tr = []
     auc_fold_tr = []
 
@@ -166,13 +169,13 @@ if __name__ == '__main__':
 
     args.num_classes=2 if args.dataset=='tcga_lung' else 1
     # args.num_classes=1
-    args.output_bag_dim=2
+    # args.output_bag_dim=2
     args.device = 0
 
     if args.mil_model == 'Dtfd':
         args.epochs = 200
     elif args.mil_model == 'Dsmil':
-        args.epochs = 200
+        args.epochs = 40
     elif args.mil_model == 'Attention':
         args.epochs = 100
     elif args.mil_model == 'GatedAttention':

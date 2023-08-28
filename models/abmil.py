@@ -13,7 +13,7 @@ class Attention(MilBase):
         self.L = 500
         self.D = 128
         # self.K = self.dim_out
-        self.K = args.output_bag_dim
+        self.K = args.num_classes
 
         # self.feature_extractor_part1 = nn.Sequential(
         #     nn.Conv2d(1, 20, kernel_size=5),
@@ -36,7 +36,7 @@ class Attention(MilBase):
         )
 
         self.classifier = nn.Sequential(
-            nn.Linear(self.L*self.K, 1)
+            nn.Linear(self.L, 1)
         )
                     
         if args.train_instance == 'None':
@@ -73,28 +73,9 @@ class Attention(MilBase):
             # logit_bag: #bags x args.output_bag_dim     logit_instances: #instances x ic_dim_out (x Head_num)
             return {'bag': logit_bag, 'instance': logit_instances}
         else:       
-            return {'bag': logit_bag, 'instance': None}
+            return {'bag': logit_bag}
     
 
-    # # AUXILIARY METHODS
-    # def calculate_classification_error(self, X, Y):
-    #     Y = Y.float()
-    #     _, _, Y_hat = self.forward(X)
-    #     error = 1. - Y_hat.eq(Y).cpu().float().mean().data.item()
-
-    #     return error, Y_hat
-
-    # def calculate_objective(self, X, Y):
-    #     # Y = Y.float()
-    #     # Y_prob, _, A = self.forward(X)
-    #     logit_bag, _ = self.forward(X)
-    #     loss = self.criterion(logit_bag, Y)
-    #     # Y_prob = F.sigmoid(logit_bag)
-    #     # Y_prob = torch.clamp(Y_prob, min=1e-5, max=1. - 1e-5)
-    #     # neg_log_likelihood = -1. * (Y * torch.log(Y_prob) + (1. - Y) * torch.log(1. - Y_prob))  # negative log bernoulli
-
-    #     # return neg_log_likelihood, A
-    #     return loss
 
 
 class GatedAttention(MilBase):
@@ -104,7 +85,7 @@ class GatedAttention(MilBase):
         self.L = 500
         self.D = 128
         # self.K = self.dim_out
-        self.K = args.output_bag_dim
+        self.K = args.num_classes
 
         # self.feature_extractor_part1 = nn.Sequential(
         #     nn.Conv2d(1, 20, kernel_size=5),
@@ -134,7 +115,7 @@ class GatedAttention(MilBase):
 
         self.classifier = nn.Sequential(
             # nn.Linear(self.L*self.K, 1),
-            nn.Linear(self.L*self.K, 1),
+            nn.Linear(self.L, 1),
             # nn.Sigmoid()
         )
             
@@ -176,7 +157,7 @@ class GatedAttention(MilBase):
             # logit_bag: #bags x args.output_bag_dim     logit_instances: #instances x ic_dim_out (x Head_num)
             return {'bag': logit_bag, 'instance': logit_instances}
         else:       
-            return {'bag': logit_bag, 'instance': None}
+            return {'bag': logit_bag}
         
 
     # # AUXILIARY METHODS
