@@ -234,10 +234,11 @@ class MilBase(nn.Module):
         """
         logit_dict = self.forward(x)
         
-        if y==0:
-            self.std_neg.append(torch.mean(torch.std(logit_dict['feat'], dim=0)).item())
-        elif y==1:            
-            self.std_pos.append(torch.mean(torch.std(logit_dict['feat'], dim=0)).item())
+        if self.args.num_classes == 1:
+            if y==0:
+                self.std_neg.append(torch.mean(torch.std(logit_dict['feat'], dim=0)).item())
+            elif y==1:            
+                self.std_pos.append(torch.mean(torch.std(logit_dict['feat'], dim=0)).item())
 
         prob_bag = self.sigmoid(logit_dict['bag'])
         prob_instance = self.sigmoid(logit_dict['instance']) if 'instance' in logit_dict.keys() else None
