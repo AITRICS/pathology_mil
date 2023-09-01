@@ -36,8 +36,8 @@ import math
 #     and callable(models.__dict__[name]))
 # /nfs/strange/shared/hazel/stad_simclr_lr1/train
 parser = argparse.ArgumentParser(description='MIL Training') 
-# parser.add_argument('--data-root', default='/mnt/aitrics_ext/ext01/shared/camelyon16_eosin_224_16_pkl_0524/swav_res50', help='path to dataset')
-parser.add_argument('--data-root', default='/mnt/aitrics_ext/ext01/shared/tcgalung_dsmil', help='path to dataset')
+parser.add_argument('--data-root', default='/mnt/aitrics_ext/ext01/shared/camelyon16_eosin_224_16_pkl_0524/swav_res50', help='path to dataset')
+# parser.add_argument('--data-root', default='/mnt/aitrics_ext/ext01/shared/tcgalung_dsmil', help='path to dataset')
 parser.add_argument('--fold', default=5, help='number of fold for cross validation')
 parser.add_argument('--workers', default=4, type=int, metavar='N', help='number of data loading workers (default: 1)')
 parser.add_argument('--scheduler-centroid', default='single', choices=['None', 'single', 'multi'], type=str, help='loss scheduler')
@@ -52,20 +52,22 @@ parser.add_argument('--train-instance', default='interinstance_vic', choices=['N
 parser.add_argument('--ic-num-head', default=1, type=int, help='# of projection head for each instance token')
 parser.add_argument('--ic-depth', default=1, choices=[0,1,2,3,4], type=int, help='layer number of projection head for instance tokens')
 parser.add_argument('--weight-agree', default=1.0, type=float, help='weight for the agree loss, eg, center, cosine')
-parser.add_argument('--weight-disagree', default=1.0, type=float, help='weight for the disagree loss, eg, variance loss, contrastive')
+parser.add_argument('--weight-disagree', default=0.3, type=float, help='weight for the disagree loss, eg, variance loss, contrastive')
 parser.add_argument('--weight-cov', default=1.0, type=float, help='weight for the covariance loss')
-parser.add_argument('--stddev-disagree', default=1.0, type=float, help='std dev threshold for disagree loss')
+parser.add_argument('--stddev-disagree', default=1.5, type=float, help='std dev threshold for disagree loss')
 parser.add_argument('--optimizer-nc', default='adamw', choices=['sgd', 'adam', 'adamw'], type=str, help='optimizer for negative centroid')
 parser.add_argument('--lr', default=0.0003, type=float, metavar='LR', help='initial learning rate', dest='lr')
 # parser.add_argument('--lr-aux', default=0.001, type=float, help='initial learning rate')
 parser.add_argument('--lr-center', default=0.00001, type=float, help='initial learning rate')
-parser.add_argument('--mil-model', default='Attention', type=str, help='use pre-training method')
+parser.add_argument('--mil-model', default='Dsmil', type=str, help='use pre-training method')
 parser.add_argument('--passing-v', default=1, choices=[0,1], type=int, help='passing_v for dsmil')
+parser.add_argument('--dsmil-method', default='BClassifier_ascend', choices=['BClassifier_basic', 'BClassifier_ascend'], type=str, help='BCLassifier type for dsmil')
 
 parser.add_argument('--pushtoken', default=False, help='Push Bullet token')
 
 def run_fold(args, fold, txt_name) -> Tuple:
-
+    _std_neg=[]
+    _std_pos=[]
     random.seed(args.seed)
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed_all(args.seed)
@@ -74,7 +76,12 @@ def run_fold(args, fold, txt_name) -> Tuple:
 
     dataset_train = Dataset_pkl(path_pretrained_pkl_root=args.data_root, fold_now=fold, fold_all=args.fold, shuffle_slide=True, shuffle_patch=True, split='train', num_classes=args.num_classes, seed=args.seed)
     loader_train = torch.utils.data.DataLoader(dataset_train, batch_size=args.batch_size, shuffle=True, num_workers=args.workers, pin_memory=True)
+    
     args.num_step = len(loader_train)
+    if args.dataset == 'CAMELYON16':
+        args.num_step_neg = args.num_neg[fold-1]
+    elif args.dataset == 'tcga_lung':
+        args.num_step_neg = args.num_neg[fold-1]
 
     dataset_val = Dataset_pkl(path_pretrained_pkl_root=args.data_root, fold_now=fold, fold_all=args.fold, shuffle_slide=True, shuffle_patch=True, split='val', num_classes=args.num_classes, seed=args.seed)
     loader_val = torch.utils.data.DataLoader(dataset_val, batch_size=args.batch_size, shuffle=False, num_workers=args.workers, pin_memory=True)
@@ -86,7 +93,7 @@ def run_fold(args, fold, txt_name) -> Tuple:
     file_name = f'{txt_name}_lr{args.lr}_lr_center{args.lr_center}_fold{fold}.pth'
     for epoch in trange(1, (args.epochs+1)):        
         train(loader_train, model)
-        auc, acc = validate(loader_val, model, args)
+        auc, acc = validate(loader_val, model, args, _std_neg, _std_pos)
         if np.mean(auc) > auc_best:
             epoch_best = epoch
             auc_best = np.mean(auc)
@@ -95,7 +102,8 @@ def run_fold(args, fold, txt_name) -> Tuple:
             torch.save({'state_dict': model.state_dict()}, file_name)
         print(f'auc val: {auc}')
     
-
+    print(f'[FIN] _std_neg (VAL): {_std_neg}')
+    print(f'[FIN] _std_pos (VAL): {_std_pos}')
     dataset_test = Dataset_pkl(path_pretrained_pkl_root=args.data_root, fold_now=999, fold_all=9999, shuffle_slide=False, shuffle_patch=False, split='test', num_classes=args.num_classes, seed=args.seed)
     loader_test = torch.utils.data.DataLoader(dataset_test, batch_size=args.batch_size, shuffle=False, num_workers=args.workers, pin_memory=True)
     
@@ -103,8 +111,16 @@ def run_fold(args, fold, txt_name) -> Tuple:
     model.load_state_dict(checkpoint['state_dict'])
     os.remove(file_name)
 
-    auc_test, acc_test = validate(loader_test, model, args)
-    auc_tr, acc_tr = validate(loader_train, model, args)
+    _std_neg=[]
+    _std_pos=[]
+    auc_test, acc_test = validate(loader_test, model, args, _std_neg, _std_pos)
+    print(f'[FIN] _std_neg (TEST): {_std_neg}')
+    print(f'[FIN] _std_pos (TEST): {_std_pos}')
+    _std_neg=[]
+    _std_pos=[]
+    auc_tr, acc_tr = validate(loader_train, model, args, _std_neg, _std_pos)
+    print(f'[FIN] _std_neg (TR): {_std_neg}')
+    print(f'[FIN] _std_pos (TR): {_std_pos}')
 
     del dataset_train, loader_train, dataset_val, loader_val
     print(f'fold [{fold}]: epoch_best ==> {epoch_best}')
@@ -122,7 +138,7 @@ def train(train_loader, model):
 
         model.update(images, target)
 
-def validate(val_loader, model, args):
+def validate(val_loader, model, args, _std_neg, _std_pos):
     bag_labels = []
     bag_predictions = []
     model.eval()
@@ -135,9 +151,12 @@ def validate(val_loader, model, args):
             images = images.type(torch.FloatTensor).cuda(args.device, non_blocking=True)
             
             # output --> #bags x #classes
-            prob_bag, _ = model.infer(images)
+            prob_bag, _ = model.infer(images, bag_labels[-1])
             #classes  (prob)
             bag_predictions.append(prob_bag.squeeze(0).cpu().numpy())
+
+        _std_neg.append(sum(model.std_neg)/float(len(model.std_neg)))
+        _std_pos.append(sum(model.std_pos)/float(len(model.std_pos)))
 
         # bag_labels --> #bag x #classes
         bag_labels = np.array(bag_labels)
@@ -153,9 +172,8 @@ if __name__ == '__main__':
     
     args.pretrain_type = args.data_root.split("/")[-2:]
     # txt_name = f'{args.dataset}_{args.pretrain_type}_downstreamLR_{args.lr}_optimizer_{args.optimizer}_epoch{args.epochs}_wd{args.weight_decay}'    
-    txt_name = f'{datetime.today().strftime("%m%d")}_{args.dataset}_{args.mil_model}_scheduler_centroid{args.scheduler_centroid}_train_instance{args.train_instance}' +\
-    f'_ic_num_head{args.ic_num_head}_ic_depth{args.ic_depth}_optimizer_nc{args.optimizer_nc}' +\
-    f'_weight_agree{args.weight_agree}_weight_disagree{args.weight_disagree}_weight_cov{args.weight_cov}_stddev_disagree{args.stddev_disagree}_passing_v{args.passing_v}'
+    txt_name = f'{datetime.today().strftime("%m%d")}_{args.dataset}_{args.mil_model}_train_instance{args.train_instance}_weight_cov{args.weight_cov}' +\
+    f'_weight_agree{args.weight_agree}_weight_disagree{args.weight_disagree}_stddev_disagree{args.stddev_disagree}_passing_v{args.passing_v}_dsmil_method{args.dsmil_method}'
     acc_fold_tr = []
     auc_fold_tr = []
 
@@ -169,6 +187,11 @@ if __name__ == '__main__':
     # args.num_classes=1
     # args.output_bag_dim=2
     args.device = 0
+
+    if args.dataset == 'CAMELYON16':
+        args.num_neg = [[159], [159], [160], [159], [159]]
+    elif args.dataset == 'tcga_lung':
+        args.num_neg = [[82,85], [82,85], [82,85], [81,86], [81,86]]
 
     if args.mil_model == 'Dtfd':
         args.epochs = 200
