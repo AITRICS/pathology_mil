@@ -126,8 +126,8 @@ class MilBase(nn.Module):
         self.ma_dim_in = ma_dim_in
         self.var_pos=[]
         self.var_neg=[]
-        self.init_mean = 0.5
-        self.init_std = 0.1
+        self.init_mean = 0.1
+        self.init_std = 0.01
 
         self.std_pos = []        
         self.std_neg = []
@@ -234,11 +234,10 @@ class MilBase(nn.Module):
         """
         logit_dict = self.forward(x)
         
-        if self.args.num_classes == 1:
-            if y==0:
-                self.std_neg.append(torch.mean(torch.std(logit_dict['feat'], dim=0)).item())
-            elif y==1:            
-                self.std_pos.append(torch.mean(torch.std(logit_dict['feat'], dim=0)).item())
+        if y==0:
+            self.std_neg.append(torch.mean(torch.std(logit_dict['feat'], dim=0)).item())
+        elif y==1:            
+            self.std_pos.append(torch.mean(torch.std(logit_dict['feat'], dim=0)).item())
 
         prob_bag = self.sigmoid(logit_dict['bag'])
         prob_instance = self.sigmoid(logit_dict['instance']) if 'instance' in logit_dict.keys() else None

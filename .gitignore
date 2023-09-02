@@ -130,3 +130,5 @@ dmypy.json
 
 # User custom
 *.txt
+*.pth
+*.txt
