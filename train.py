@@ -191,7 +191,8 @@ if __name__ == '__main__':
     if args.dataset == 'CAMELYON16':
         args.num_neg = [[159], [159], [160], [159], [159]]
     elif args.dataset == 'tcga_lung':
-        args.num_neg = [[82,85], [82,85], [82,85], [81,86], [81,86]]
+        # args.num_neg = [[82,85], [82,85], [82,85], [81,86], [81,86]]
+        args.num_neg = [[326, 342], [326, 342], [326, 342], [327, 341], [327, 341]]
 
     if args.mil_model == 'Dtfd':
         args.epochs = 200
