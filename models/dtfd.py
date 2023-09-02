@@ -257,6 +257,12 @@ class Dtfd(MilBase):
         torch.nn.utils.clip_grad_norm_(self.attention.parameters(), self.grad_clipping)
         torch.nn.utils.clip_grad_norm_(self.classifier.parameters(), self.grad_clipping)   
         torch.nn.utils.clip_grad_norm_(self.UClassifier.parameters(), self.grad_clipping)
+        if hasattr(self, 'instance_classifier'):
+            torch.nn.utils.clip_grad_norm_(self.instance_classifier.parameters(), self.grad_clipping)
+        if hasattr(self, 'negative_centroid'):
+            for i in range(len(self.negative_centroid)):
+                torch.nn.utils.clip_grad_norm_([self.negative_centroid[i]], self.grad_clipping)
+                torch.nn.utils.clip_grad_norm_([self.negative_std[i]], self.grad_clipping)
 
         # for _optim in self.optimizer.values():
         #     _optim.step()
