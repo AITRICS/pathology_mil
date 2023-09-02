@@ -300,11 +300,12 @@ class MilBase(nn.Module):
         #     _optim.step()
         for k in self.optimizer.keys():
             if k == 'negative_centroid':
-                for i in Y[0,:].tolist():
+                # for i in Y[0,:].tolist():
+                for i in (Y[0,:] == 0).nonzero(as_tuple=True)[0].tolist():
                     i = int(i)
-                    if i == 0:
-                        self.optimizer[k][i].step()
-                        self.scheduler[k][i].step()
+                    # if i == 0:
+                    self.optimizer[k][i].step()
+                    self.scheduler[k][i].step()
             else:
                 self.optimizer[k].step()
                 if k in self.scheduler.keys():
