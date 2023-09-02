@@ -161,7 +161,8 @@ class MilBase(nn.Module):
 
         if args.train_instance != 'None':
             self.instance_classifier = Classifier_instance(dim_in=ic_dim_in, dim_out=ic_dim_out*args.num_classes, layer_depth=args.ic_depth, num_head=args.ic_num_head)
-            self.set_negative_centroid(args=args, dim_negative_centroid=ic_dim_out)
+            if ('interinstance_vi' in args.train_instance) or (args.train_instance == 'intrainstance_vc'):
+                self.set_negative_centroid(args=args, dim_negative_centroid=ic_dim_out)
        
         if args.train_instance=='intrainstance_cosine':
             self.mask_diag = 1.0-torch.eye(args.ic_num_head, requires_grad=False).unsqueeze(0).cuda()
@@ -233,11 +234,11 @@ class MilBase(nn.Module):
         prob_instance: #bags x #instances x #class
         """
         logit_dict = self.forward(x)
-        
-        if y==0:
-            self.std_neg.append(torch.mean(torch.std(logit_dict['feat'], dim=0)).item())
-        elif y==1:            
-            self.std_pos.append(torch.mean(torch.std(logit_dict['feat'], dim=0)).item())
+        if self.args.num_classes == 1:
+            if y==0:
+                self.std_neg.append(torch.mean(torch.std(logit_dict['feat'], dim=0)).item())
+            elif y==1:            
+                self.std_pos.append(torch.mean(torch.std(logit_dict['feat'], dim=0)).item())
 
         prob_bag = self.sigmoid(logit_dict['bag'])
         prob_instance = self.sigmoid(logit_dict['instance']) if 'instance' in logit_dict.keys() else None
@@ -300,11 +301,12 @@ class MilBase(nn.Module):
         #     _optim.step()
         for k in self.optimizer.keys():
             if k == 'negative_centroid':
-                for i in Y[0,:].tolist():
+                # for i in Y[0,:].tolist():
+                for i in (Y[0,:] == 0).nonzero(as_tuple=True)[0].tolist():
                     i = int(i)
-                    if i == 0:
-                        self.optimizer[k][i].step()
-                        self.scheduler[k][i].step()
+                    # if i == 0:
+                    self.optimizer[k][i].step()
+                    self.scheduler[k][i].step()
             else:
                 self.optimizer[k].step()
                 if k in self.scheduler.keys():

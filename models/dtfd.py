@@ -257,6 +257,12 @@ class Dtfd(MilBase):
         torch.nn.utils.clip_grad_norm_(self.attention.parameters(), self.grad_clipping)
         torch.nn.utils.clip_grad_norm_(self.classifier.parameters(), self.grad_clipping)   
         torch.nn.utils.clip_grad_norm_(self.UClassifier.parameters(), self.grad_clipping)
+        if hasattr(self, 'instance_classifier'):
+            torch.nn.utils.clip_grad_norm_(self.instance_classifier.parameters(), self.grad_clipping)
+        if hasattr(self, 'negative_centroid'):
+            for i in range(len(self.negative_centroid)):
+                torch.nn.utils.clip_grad_norm_([self.negative_centroid[i]], self.grad_clipping)
+                torch.nn.utils.clip_grad_norm_([self.negative_std[i]], self.grad_clipping)
 
         # for _optim in self.optimizer.values():
         #     _optim.step()
@@ -266,11 +272,12 @@ class Dtfd(MilBase):
 
         for k in self.optimizer.keys():
             if k == 'negative_centroid':
-                for i in Y[0,:].tolist():
+                # for i in Y[0,:].tolist():
+                for i in (Y[0,:] == 0).nonzero(as_tuple=True)[0].tolist():
                     i = int(i)
-                    if i == 0:
-                        self.optimizer[k][i].step()
-                        self.scheduler[k][i].step()
+                    # if i == 0:
+                    self.optimizer[k][i].step()
+                    self.scheduler[k][i].step()
             else:
                 self.optimizer[k].step()
                 if k in self.scheduler.keys():

@@ -153,11 +153,11 @@ class Dsmil(MilBase):
         # self.scheduler={}
 
         if args.train_instance == 'None':
-            self.optimizer['mil_model'] = torch.optim.Adam(list(self.i_classifier.parameters())+list(self.b_classifier.parameters())+
-                                                            list(self.milnet.parameters()), lr=args.lr, betas=(0.5, 0.9), weight_decay=0.005)
+            # self.optimizer['mil_model'] = torch.optim.Adam(list(self.i_classifier.parameters())+list(self.b_classifier.parameters())+
+            #                                                 list(self.milnet.parameters()), lr=args.lr, betas=(0.5, 0.9), weight_decay=0.005)
+            self.optimizer['mil_model'] = torch.optim.Adam(list(self.milnet.parameters()), lr=args.lr, betas=(0.5, 0.9), weight_decay=0.005)
         else:
-            self.optimizer['mil_model'] = torch.optim.Adam(list(self.i_classifier.parameters())+list(self.b_classifier.parameters())+
-                                                            list(self.milnet.parameters())+list(self.instance_classifier.parameters()), lr=args.lr, betas=(0.5, 0.9), weight_decay=0.005)
+            self.optimizer['mil_model'] = torch.optim.Adam(list(self.milnet.parameters())+list(self.instance_classifier.parameters()), lr=args.lr, betas=(0.5, 0.9), weight_decay=0.005)
 
         # self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, self.args.num_epochs, 0.000005)
         self.scheduler['mil_model'] = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer['mil_model'], self.args.epochs*self.args.num_step, 0.000005)
@@ -190,9 +190,10 @@ class Dsmil(MilBase):
     @torch.no_grad()
     def infer(self, x: torch.Tensor, y):
         logit_dict = self.forward(x)
-        if y==0:
-            self.std_neg.append(torch.mean(torch.std(logit_dict['feat'], dim=0)).item())
-        elif y==1:            
-            self.std_pos.append(torch.mean(torch.std(logit_dict['feat'], dim=0)).item())
+        if self.args.num_classes == 1:
+            if y==0:
+                self.std_neg.append(torch.mean(torch.std(logit_dict['feat'], dim=0)).item())
+            elif y==1:            
+                self.std_pos.append(torch.mean(torch.std(logit_dict['feat'], dim=0)).item())
         max_logit_instance, _ = torch.max(logit_dict['instance_stream1'], 1)        # (1,n)
         return 0.5*torch.sigmoid(max_logit_instance)+0.5*torch.sigmoid(logit_dict['bag']), None
