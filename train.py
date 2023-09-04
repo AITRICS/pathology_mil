@@ -156,7 +156,7 @@ if __name__ == '__main__':
     args.pretrain_type = args.data_root.split("/")[-2:]
     # txt_name = f'{args.dataset}_{args.pretrain_type}_downstreamLR_{args.lr}_optimizer_{args.optimizer}_epoch{args.epochs}_wd{args.weight_decay}'    
     txt_name = f'{datetime.today().strftime("%m%d")}_{args.dataset}_{args.mil_model}_scheduler_centroid{args.scheduler_centroid}_train_instance_{args.train_instance}' +\
-    f'_ic_num_head{args.ic_num_head}_ic_depth{args.ic_depth}_optimizer_nc{args.optimizer_nc}' +\
+    f'_alpha{args.alpha}_ic_num_head{args.ic_num_head}_ic_depth{args.ic_depth}_optimizer_nc{args.optimizer_nc}' +\
     f'_weight_agree{args.weight_agree}_weight_disagree{args.weight_disagree}_weight_cov{args.weight_cov}_stddev_disagree{args.stddev_disagree}_passing_v{args.passing_v}'
     acc_fold_tr = []
     auc_fold_tr = []
@@ -204,7 +204,7 @@ if __name__ == '__main__':
     auc_fold_val = np.mean(auc_fold_val, axis=0)
     auc_fold_test = np.mean(auc_fold_test, axis=0)
     
-    with open(os.path.joing('results', txt_name + '.txt'), 'a' if os.path.isfile(txt_name + '.txt') else 'w') as f:
+    with open(os.path.join('results', txt_name + '.txt'), 'a' if os.path.isfile(txt_name + '.txt') else 'w') as f:
         f.write(f'===================== LR-mil: {args.lr} || LR-negative center: {args.lr_center} =======================\n')
         if args.num_classes == 1:
             f.write(f'AUC TR: {auc_fold_tr[0]}\n')

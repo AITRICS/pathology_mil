@@ -133,6 +133,7 @@ class Dsmil(MilBase):
             return 0.5*bag_loss + 0.5*max_loss
         else:
             loss_instance = getattr(self, self.args.train_instance)(logit_dict['instance'], int(Y[0, 0]))
+            print('Semisup1 loss:', loss_instance)
             return 0.5*bag_loss + 0.5*max_loss + loss_instance
     
     def infer(self, x: torch.Tensor):

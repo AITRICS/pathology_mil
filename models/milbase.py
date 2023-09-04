@@ -282,7 +282,7 @@ class MilBase(nn.Module):
         <return>
             loss: scalar
         """
-        if self.dataset == 'CAMELYON16':
+        if self.args.dataset == 'CAMELYON16':
             n_instances = p.size(0)
             if target == 0:
                 return self.criterion_bag(p.sigmoid(), torch.zeros_like(p, device=p.get_device()))
@@ -293,11 +293,11 @@ class MilBase(nn.Module):
                     computed_instances_labels = torch.zeros(pseudo_prob.shape, device=p.get_device()).float()
                     mask_instances_labels = torch.zeros(pseudo_prob.shape, device=p.get_device()).float()
                     
-                    _, topk_idx = torch.topk(pseudo_prob, k=int(self.alpha*n_instances), dim=0)
+                    _, topk_idx = torch.topk(pseudo_prob, k=int(self.args.alpha*n_instances), dim=0)
                     computed_instances_labels[topk_idx] = 1.
                     mask_instances_labels[topk_idx] = 1.
-                    if self.beta > 0.:
-                        _, bottomk_idx = torch.topk(pseudo_prob, k=int(self.beta*n_instances), largest=False, dim=0)
+                    if self.args.beta > 0.:
+                        _, bottomk_idx = torch.topk(pseudo_prob, k=int(self.args.beta*n_instances), largest=False, dim=0)
                         computed_instances_labels[bottomk_idx] = 0.
                         mask_instances_labels[bottomk_idx] = 1.
                 
@@ -308,7 +308,7 @@ class MilBase(nn.Module):
                 # pl_loss = self.unlabeled_weight()*pl_loss
                                 
                 return pl_loss
-        elif self.dataset == 'tcga_lung':
+        elif self.args.dataset == 'tcga_lung':
             n_instances = p.size(0)
             p = p.squeeze()
             if target == 0:
@@ -322,11 +322,11 @@ class MilBase(nn.Module):
                     computed_instances_labels = torch.zeros(type0_prob.shape, device=p.get_device()).float()
                     mask_instances_labels = torch.zeros(type0_prob.shape, device=p.get_device()).float()
                     
-                    _, topk_idx = torch.topk(type0_prob, k=int(self.alpha*n_instances), dim=0)
+                    _, topk_idx = torch.topk(type0_prob, k=int(self.args.alpha*n_instances), dim=0)
                     computed_instances_labels[topk_idx] = 1.
                     mask_instances_labels[topk_idx] = 1.
-                    if self.beta > 0.:
-                        _, bottomk_idx = torch.topk(type0_prob, k=int(self.beta*n_instances), largest=False, dim=0)
+                    if self.args.beta > 0.:
+                        _, bottomk_idx = torch.topk(type0_prob, k=int(self.args.beta*n_instances), largest=False, dim=0)
                         computed_instances_labels[bottomk_idx] = 0.
                         mask_instances_labels[bottomk_idx] = 1.
                 
@@ -352,11 +352,11 @@ class MilBase(nn.Module):
                     computed_instances_labels = torch.zeros(type1_pred.shape, device=p.get_device()).float()
                     mask_instances_labels = torch.zeros(type1_pred.shape, device=p.get_device()).float()
                     
-                    _, topk_idx = torch.topk(type1_pred, k=int(self.alpha*n_instances), dim=0)
+                    _, topk_idx = torch.topk(type1_pred, k=int(self.args.alpha*n_instances), dim=0)
                     computed_instances_labels[topk_idx] = 1.
                     mask_instances_labels[topk_idx] = 1.
-                    if self.beta > 0.:
-                        _, bottomk_idx = torch.topk(type1_pred, k=int(self.beta*n_instances), largest=False, dim=0)
+                    if self.args.beta > 0.:
+                        _, bottomk_idx = torch.topk(type1_pred, k=int(self.args.beta*n_instances), largest=False, dim=0)
                         computed_instances_labels[bottomk_idx] = 0.
                         mask_instances_labels[bottomk_idx] = 1.
                 

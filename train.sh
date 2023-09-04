@@ -1,7 +1,8 @@
-gpu=0
+gpu=3
 #camerelon: /mnt/aitrics_ext/ext01/shared/camelyon16_eosin_224_16_pkl_0524/swav_res50
-#lung: /mnt/aitrics_ext/ext01/shared/tcgalung_eosin_224_16_pkl_0806/swav_res50/
-data_root=/mnt/aitrics_ext/ext01/shared/tcgalung_eosin_224_16_pkl_0807/swav_res50/
+#lung: /mnt/aitrics_ext/ext01/shared/tcgalung_eosin_224_16_pkl_0806/swav_res50/ -> Old
+#lung: /mnt/aitrics_ext/ext01/shared/tcgalung_dsmil
+data_root=/mnt/aitrics_ext/ext01/shared/tcgalung_dsmil
 # single도 해볼 수 있음
 scheduler_centroid=single
 # tcga_lung, CAMELYON16 
@@ -23,7 +24,7 @@ lr_center=0.00001
 mil_model=Dsmil
 alpha=0.1
 beta=0
-
+optimizer_nc=adamw
 # 이렇게 하면 8개 돔. gpu 0부터 시작
 
     # for lr in 0.01 0.003 0.001 0.0003; do
@@ -37,11 +38,11 @@ beta=0
 # done
 
 
-for lr in 0.003; do
+for lr in 0.0001; do
     for alpha in 0.1 0.2 0.3; do
         CUDA_VISIBLE_DEVICES=$gpu nohup python train.py --data-root $data_root --scheduler-centroid $scheduler_centroid --dataset $dataset --train-instance $train_instance \
         --ic-num-head $ic_num_head --ic-depth $ic_depth --weight-agree $weight_agree --weight-disagree $weight_disagree --stddev-disagree $stddev_disagree \
-        --optimizer-nc $optimizer_nc --lr $lr --lr-center $lr_center --mil-model $mil_model --alpha $alpha --pushtoken o.OsyxHt1pZuwUBoMEFYBuzHFNjV5ekr95 > logs/DSET_${dataset}_milmodel_${mil_model}_train_instance_${train_instance}_gpu_${gpu}.txt &
+        --optimizer-nc $optimizer_nc --lr $lr --lr-center $lr_center --mil-model $mil_model --alpha $alpha > logs/DSET_${dataset}_milmodel_${mil_model}_alpha_${alpha}_train_instance_${train_instance}_gpu_${gpu}.txt &
         (( gpu+=1 ))
     done
 done
