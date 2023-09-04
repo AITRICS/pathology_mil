@@ -487,7 +487,7 @@ class MilBase(nn.Module):
         if target == 0:
             
             dist_negative_centroid = p - _negative_centroid.unsqueeze(0).expand(ls, -1) # _negative_centroid : Length_sequence x fs
-            std = torch.sqrt(dist_negative_centroid.pow(2).sum(dim=0).div(ls-1))
+            std = torch.sqrt(dist_negative_centroid.pow(2).sum(dim=0).div(ls-1) +0.0000000001)
             # dist_negative_centroid_norm = dist_negative_centroid / std
             # corr = (dist_negative_centroid_norm.T @ dist_negative_centroid_norm) / (ls-1)
             # print(f'stddev-mean (neg): {torch.mean(std)}')
@@ -506,7 +506,7 @@ class MilBase(nn.Module):
         elif target == 1:
             # __negative_centroid = _negative_centroid.detach().clone()
             dist_negative_centroid = p - _negative_centroid.detach().expand(ls, -1) # _negative_centroid : Length_sequence x fs
-            std = torch.sqrt(dist_negative_centroid.pow(2).sum(dim=0).div(ls-1))
+            std = torch.sqrt(dist_negative_centroid.pow(2).sum(dim=0).div(ls-1)+0.0000000001)
             # print(f'stddev-mean (pos): {torch.mean(std)}')
             # print(f'stddev-max (pos): {torch.amax((std))}')
             # print(f'stddev-min (pos): {torch.amin((std))}')
