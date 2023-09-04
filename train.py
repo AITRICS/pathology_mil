@@ -36,15 +36,15 @@ import math
 #     and callable(models.__dict__[name]))
 # /nfs/strange/shared/hazel/stad_simclr_lr1/train
 parser = argparse.ArgumentParser(description='MIL Training') 
-# parser.add_argument('--data-root', default='/mnt/aitrics_ext/ext01/shared/camelyon16_eosin_224_16_pkl_0524/swav_res50', help='path to dataset')
-parser.add_argument('--data-root', default='/mnt/aitrics_ext/ext01/shared/tcgalung_dsmil', help='path to dataset')
+parser.add_argument('--data-root', default='/home/chris/storage/camelyon16_eosin_224_16_pkl_0524/swav_res50', help='path to dataset')
+# parser.add_argument('--data-root', default='/mnt/aitrics_ext/ext01/shared/tcgalung_dsmil', help='path to dataset')
 parser.add_argument('--fold', default=5, help='number of fold for cross validation')
 parser.add_argument('--workers', default=4, type=int, metavar='N', help='number of data loading workers (default: 1)')
 parser.add_argument('--scheduler-centroid', default='single', choices=['None', 'single', 'multi'], type=str, help='loss scheduler')
 parser.add_argument('--batch-size', default=1, type=int, metavar='N', help='the total batch size on the current node (DDP)')
 parser.add_argument('--seed', default=1, type=int, help='seed for initializing training. ')
 
-parser.add_argument('--dataset', default='tcga_lung', choices=['CAMELYON16', 'tcga_lung', 'tcga_stad'], type=str, help='dataset type')
+parser.add_argument('--dataset', default='CAMELYON16', choices=['CAMELYON16', 'tcga_lung', 'tcga_stad'], type=str, help='dataset type')
 # parser.add_argument('--dataset', default='tcga_lung', choices=['CAMELYON16', 'tcga_lung', 'tcga_stad'], type=str, help='dataset type')
 parser.add_argument('--train-instance', default='interinstance_vic', choices=['None', 'semisup1', 'semisup2', 'divdis',
                                                                                 'interinstance_vi','interinstance_vic', 'intrainstance_vc',
@@ -99,7 +99,11 @@ def run_fold(args, fold, txt_name) -> Tuple:
             auc_best = np.mean(auc)
             auc_val = auc
             acc_val = acc
-            torch.save({'state_dict': model.state_dict()}, file_name)
+            torch.save({
+                'state_dict': model.state_dict(),
+                'negative_centroid': model.negative_centroid if hasattr(model, 'negative_centroid') else None,
+                'negative_std': model.negative_std if hasattr(model, 'negative_std') else None,
+                }, file_name)
         print(f'auc val: {auc}')
     
     print(f'[FIN] _std_neg (VAL): {_std_neg}')
