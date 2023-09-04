@@ -126,7 +126,7 @@ class MilBase(nn.Module):
         self.ma_dim_in = ma_dim_in
         self.var_pos=[]
         self.var_neg=[]
-        self.init_mean = 0.1
+        self.init_mean = 1.0
         self.init_std = 0.01
 
         self.std_pos = []        
