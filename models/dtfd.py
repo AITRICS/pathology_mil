@@ -203,9 +203,9 @@ class Dtfd(MilBase):
             logit_instances = self.instance_classifier(feat_instances)
             # logit_bag: #bags x args.num_classes     logit_instances: #instances x ic_dim_out (x Head_num)
             # 아직 확인 못함
-            return {'bag': logit_bag, 'pseudo_bag': logit_pseudo_bag, 'instance': logit_instances}
+            return {'bag': logit_bag, 'pseudo_bag': logit_pseudo_bag, 'instance': logit_instances, 'feat': feat_instances}
         else:       
-            return {'bag': logit_bag, 'pseudo_bag': logit_pseudo_bag}
+            return {'bag': logit_bag, 'pseudo_bag': logit_pseudo_bag, 'feat': feat_instances}
                
 
     def calculate_objective(self, X, Y):
@@ -238,8 +238,16 @@ class Dtfd(MilBase):
         X: #bags x #instances x #dims => encoded patches
         Y: #bags x #classes  ==========> slide-level label        
         """
-        for _optim in self.optimizer.values():
-            _optim.zero_grad()
+        # for _optim in self.optimizer.values():
+        #     _optim.zero_grad()
+
+        for k in self.optimizer.keys():
+            if k == 'negative_centroid':
+                for _optim in self.optimizer[k]:
+                    _optim.zero_grad()
+            else:
+                self.optimizer[k].zero_grad()
+
         loss = self.calculate_objective(X, Y)
         loss.backward()
 
@@ -247,9 +255,29 @@ class Dtfd(MilBase):
         torch.nn.utils.clip_grad_norm_(self.attention.parameters(), self.grad_clipping)
         torch.nn.utils.clip_grad_norm_(self.classifier.parameters(), self.grad_clipping)   
         torch.nn.utils.clip_grad_norm_(self.UClassifier.parameters(), self.grad_clipping)
+        if hasattr(self, 'instance_classifier'):
+            torch.nn.utils.clip_grad_norm_(self.instance_classifier.parameters(), self.grad_clipping)
+        if hasattr(self, 'negative_centroid'):
+            for i in range(len(self.negative_centroid)):
+                torch.nn.utils.clip_grad_norm_([self.negative_centroid[i]], self.grad_clipping)
+                torch.nn.utils.clip_grad_norm_([self.negative_std[i]], self.grad_clipping)
 
-        for _optim in self.optimizer.values():
-            _optim.step()
+        # for _optim in self.optimizer.values():
+        #     _optim.step()
         
-        for _scheduler in self.scheduler.values():
-            _scheduler.step()
+        # for _scheduler in self.scheduler.values():
+        #     _scheduler.step()
+
+        for k in self.optimizer.keys():
+            if k == 'negative_centroid':
+                # for i in Y[0,:].tolist():
+                for i in (Y[0,:] == 0).nonzero(as_tuple=True)[0].tolist():
+                    i = int(i)
+                    # if i == 0:
+                    self.optimizer[k][i].step()
+                    self.scheduler[k][i].step()
+            else:
+                self.optimizer[k].step()
+                if k in self.scheduler.keys():
+                    self.scheduler[k].step()
+

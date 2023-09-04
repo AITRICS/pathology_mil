@@ -44,7 +44,7 @@ parser.add_argument('--scheduler-centroid', default='single', choices=['None', '
 parser.add_argument('--batch-size', default=1, type=int, metavar='N', help='the total batch size on the current node (DDP)')
 parser.add_argument('--seed', default=1, type=int, help='seed for initializing training. ')
 
-parser.add_argument('--dataset', default='CAMELYON16', choices=['CAMELYON16', 'tcga_lung', 'tcga_stad'], type=str, help='dataset type')
+parser.add_argument('--dataset', default='tcga_lung', choices=['CAMELYON16', 'tcga_lung', 'tcga_stad'], type=str, help='dataset type')
 # parser.add_argument('--dataset', default='tcga_lung', choices=['CAMELYON16', 'tcga_lung', 'tcga_stad'], type=str, help='dataset type')
 parser.add_argument('--train-instance', default='interinstance_vic', choices=['None', 'semisup1', 'semisup2', 'divdis',
                                                                                 'interinstance_vi','interinstance_vic', 'intrainstance_vc',
@@ -52,22 +52,24 @@ parser.add_argument('--train-instance', default='interinstance_vic', choices=['N
 parser.add_argument('--ic-num-head', default=1, type=int, help='# of projection head for each instance token')
 parser.add_argument('--ic-depth', default=1, choices=[0,1,2,3,4], type=int, help='layer number of projection head for instance tokens')
 parser.add_argument('--weight-agree', default=1.0, type=float, help='weight for the agree loss, eg, center, cosine')
-parser.add_argument('--weight-disagree', default=1.0, type=float, help='weight for the disagree loss, eg, variance loss, contrastive')
+parser.add_argument('--weight-disagree', default=0.3, type=float, help='weight for the disagree loss, eg, variance loss, contrastive')
 parser.add_argument('--weight-cov', default=1.0, type=float, help='weight for the covariance loss')
-parser.add_argument('--stddev-disagree', default=1.0, type=float, help='std dev threshold for disagree loss')
+parser.add_argument('--stddev-disagree', default=1.5, type=float, help='std dev threshold for disagree loss')
 parser.add_argument('--optimizer-nc', default='adamw', choices=['sgd', 'adam', 'adamw'], type=str, help='optimizer for negative centroid')
-parser.add_argument('--lr', default=0.0003, type=float, metavar='LR', help='initial learning rate', dest='lr')
+parser.add_argument('--lr', default=0.001, type=float, metavar='LR', help='initial learning rate', dest='lr')
 # parser.add_argument('--lr-aux', default=0.001, type=float, help='initial learning rate')
 parser.add_argument('--lr-center', default=0.00001, type=float, help='initial learning rate')
 parser.add_argument('--mil-model', default='Attention', type=str, help='use pre-training method')
 parser.add_argument('--passing-v', default=1, choices=[0,1], type=int, help='passing_v for dsmil')
+parser.add_argument('--dsmil-method', default='BClassifier_ascend', choices=['BClassifier_basic', 'BClassifier_ascend'], type=str, help='BCLassifier type for dsmil')
 
 parser.add_argument('--pushtoken', default=False, help='Push Bullet token')
 parser.add_argument('--alpha', default=0.1, type=float, help='ratio for pseudo positive sample')
 parser.add_argument('--beta', default=0, type=float, help='ratio for pseudo negative sample')
 
 def run_fold(args, fold, txt_name) -> Tuple:
-
+    _std_neg=[]
+    _std_pos=[]
     random.seed(args.seed)
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed_all(args.seed)
@@ -76,7 +78,12 @@ def run_fold(args, fold, txt_name) -> Tuple:
 
     dataset_train = Dataset_pkl(path_pretrained_pkl_root=args.data_root, fold_now=fold, fold_all=args.fold, shuffle_slide=True, shuffle_patch=True, split='train', num_classes=args.num_classes, seed=args.seed)
     loader_train = torch.utils.data.DataLoader(dataset_train, batch_size=args.batch_size, shuffle=True, num_workers=args.workers, pin_memory=True)
+    
     args.num_step = len(loader_train)
+    if args.dataset == 'CAMELYON16':
+        args.num_step_neg = args.num_neg[fold-1]
+    elif args.dataset == 'tcga_lung':
+        args.num_step_neg = args.num_neg[fold-1]
 
     dataset_val = Dataset_pkl(path_pretrained_pkl_root=args.data_root, fold_now=fold, fold_all=args.fold, shuffle_slide=True, shuffle_patch=True, split='val', num_classes=args.num_classes, seed=args.seed)
     loader_val = torch.utils.data.DataLoader(dataset_val, batch_size=args.batch_size, shuffle=False, num_workers=args.workers, pin_memory=True)
@@ -97,7 +104,8 @@ def run_fold(args, fold, txt_name) -> Tuple:
             torch.save({'state_dict': model.state_dict()}, file_name)
         print(f'auc val: {auc}')
     
-
+    print(f'[FIN] _std_neg (VAL): {_std_neg}')
+    print(f'[FIN] _std_pos (VAL): {_std_pos}')
     dataset_test = Dataset_pkl(path_pretrained_pkl_root=args.data_root, fold_now=999, fold_all=9999, shuffle_slide=False, shuffle_patch=False, split='test', num_classes=args.num_classes, seed=args.seed)
     loader_test = torch.utils.data.DataLoader(dataset_test, batch_size=args.batch_size, shuffle=False, num_workers=args.workers, pin_memory=True)
     
@@ -105,8 +113,16 @@ def run_fold(args, fold, txt_name) -> Tuple:
     model.load_state_dict(checkpoint['state_dict'])
     # os.remove(file_name)
 
-    auc_test, acc_test = validate(loader_test, model, args)
-    auc_tr, acc_tr = validate(loader_train, model, args)
+    _std_neg=[]
+    _std_pos=[]
+    auc_test, acc_test = validate(loader_test, model, args, _std_neg, _std_pos)
+    print(f'[FIN] _std_neg (TEST): {_std_neg}')
+    print(f'[FIN] _std_pos (TEST): {_std_pos}')
+    _std_neg=[]
+    _std_pos=[]
+    auc_tr, acc_tr = validate(loader_train, model, args, _std_neg, _std_pos)
+    print(f'[FIN] _std_neg (TR): {_std_neg}')
+    print(f'[FIN] _std_pos (TR): {_std_pos}')
 
     del dataset_train, loader_train, dataset_val, loader_val
     print(f'fold [{fold}]: epoch_best ==> {epoch_best}')
@@ -124,7 +140,7 @@ def train(train_loader, model, epoch):
 
         model.update(images, target, epoch)
 
-def validate(val_loader, model, args):
+def validate(val_loader, model, args, _std_neg, _std_pos):
     bag_labels = []
     bag_predictions = []
     model.eval()
@@ -137,9 +153,13 @@ def validate(val_loader, model, args):
             images = images.type(torch.FloatTensor).cuda(args.device, non_blocking=True)
             
             # output --> #bags x #classes
-            prob_bag, _ = model.infer(images)
+            prob_bag, _ = model.infer(images, bag_labels[-1])
             #classes  (prob)
             bag_predictions.append(prob_bag.squeeze(0).cpu().numpy())
+
+        if len(model.std_neg) > 0:
+            _std_neg.append(sum(model.std_neg)/float(len(model.std_neg)))
+            _std_pos.append(sum(model.std_pos)/float(len(model.std_pos)))
 
         # bag_labels --> #bag x #classes
         bag_labels = np.array(bag_labels)
@@ -171,6 +191,12 @@ if __name__ == '__main__':
     # args.num_classes=1
     # args.output_bag_dim=2
     args.device = 0
+
+    if args.dataset == 'CAMELYON16':
+        args.num_neg = [[159], [159], [160], [159], [159]]
+    elif args.dataset == 'tcga_lung':
+        # args.num_neg = [[82,85], [82,85], [82,85], [81,86], [81,86]]
+        args.num_neg = [[326, 342], [326, 342], [326, 342], [327, 341], [327, 341]]
 
     if args.mil_model == 'Dtfd':
         args.epochs = 200

@@ -71,9 +71,9 @@ class Attention(MilBase):
         if self.args.train_instance != 'None':
             logit_instances = self.instance_classifier(H.squeeze(0))      
             # logit_bag: #bags x args.output_bag_dim     logit_instances: #instances x ic_dim_out (x Head_num)
-            return {'bag': logit_bag, 'instance': logit_instances}
+            return {'bag': logit_bag, 'instance': logit_instances, 'feat': H.squeeze(0)}
         else:       
-            return {'bag': logit_bag}
+            return {'bag': logit_bag, 'feat': H.squeeze(0)}
     
 
 
@@ -155,9 +155,9 @@ class GatedAttention(MilBase):
             logit_instances = self.instance_classifier(H.squeeze(0))
 
             # logit_bag: #bags x args.output_bag_dim     logit_instances: #instances x ic_dim_out (x Head_num)
-            return {'bag': logit_bag, 'instance': logit_instances}
+            return {'bag': logit_bag, 'instance': logit_instances, 'feat': H.squeeze(0)}
         else:       
-            return {'bag': logit_bag}
+            return {'bag': logit_bag, 'feat': H.squeeze(0)}
         
 
     # # AUXILIARY METHODS
