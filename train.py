@@ -61,6 +61,7 @@ parser.add_argument('--lr', default=0.001, type=float, metavar='LR', help='initi
 parser.add_argument('--lr-center', default=0.00001, type=float, help='initial learning rate')
 parser.add_argument('--mil-model', default='Attention', type=str, help='use pre-training method')
 parser.add_argument('--passing-v', default=1, choices=[0,1], type=int, help='passing_v for dsmil')
+parser.add_argument('--save', default=1, choices=[0,1], type=int, help='whether to save the model pth')
 parser.add_argument('--dsmil-method', default='BClassifier_ascend', choices=['BClassifier_basic', 'BClassifier_ascend'], type=str, help='BCLassifier type for dsmil')
 
 parser.add_argument('--pushtoken', default=False, help='Push Bullet token')
@@ -113,7 +114,8 @@ def run_fold(args, fold, txt_name) -> Tuple:
     
     checkpoint = torch.load(file_name, map_location='cuda:0')
     model.load_state_dict(checkpoint['state_dict'])
-    os.remove(file_name)
+    if args.save == 0:
+        os.remove(file_name)
 
     _std_neg=[]
     _std_pos=[]
