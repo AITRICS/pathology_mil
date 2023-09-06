@@ -502,6 +502,7 @@ class MilBase(nn.Module):
             # print(f'corr: {cov}')
             # print(f'neg: {neg}')
             # print(f'neg std: {_negative_std}')
+            # return (self.args.weight_agree * torch.mean(std)) + torch.exp(_negative_std-stdd).mean() # var loss
             return (self.args.weight_agree * torch.mean(std)) + (_negative_std-stdd).pow(2).mean() # var loss
         elif target == 1:
             # __negative_centroid = _negative_centroid.detach().clone()
