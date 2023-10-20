@@ -9,6 +9,7 @@ import cv2
 import numpy as np
 import pickle
 from PIL import Image
+import skimage
 
 
 # def generate_patch(path_wsi, pkl_dict, args):
@@ -99,18 +100,21 @@ def generate_patch(path_wsi, pkl_dict, args):
     for i in list_idx_width:
         for j in list_idx_height:
             patch_pl = wsi.read_region(location=(i,j), level=level_patch, size=(size_patch_level_patchx, size_patch_level_patchy))
-            patch_hsv_np = np.array(patch_pl.convert('HSV'))
+            patch_rgb_np = np.array(patch_pl.convert('RGB'))
     ## 5) Get if_background
             
             # mask_cb = cv2.threshold(patch_ycbcr_np[:,:,1], thresh=th_cb, maxval=1, type=cv2.THRESH_BINARY)
             # mask_cr = cv2.threshold(patch_ycbcr_np[:,:,2], thresh=th_cr, maxval=1, type=cv2.THRESH_BINARY)
             # mask = mask_cb[1] | mask_cr[1]
-            mask = patch_hsv_np[:,:,1] >= 15.0
+            mask = skimage.color.rgb2hed(patch_rgb_np)[:,:,1] >= 0.02
+            # if mask.sum() >= threshold_background:
+                # print('yes')
             mask = mask.astype(float)
             mask = cv2.erode(cv2.dilate(mask, kernel, iterations=1), kernel, iterations=1)
             mask = cv2.dilate(cv2.erode(mask, kernel, iterations=1), kernel, iterations=1)
             # print(f'min({np.min(mask)}), max({np.max(mask)})')
     # 4) (Under for loop) Get if_background
+    
             if mask.sum() >= threshold_background:
 
     # 5) (Under for loop & Under if if_background) Save patch    
@@ -153,27 +157,21 @@ def main(args):
         if if_pkl_exist == False:
             pathlist_wsi.remove(path_wsi)
 
-    p = mp.Pool(os.cpu_count())
-    p.starmap(generate_patch, zip(pathlist_wsi, repeat(pkl), repeat(args)))
-    #for path_wsi in pathlist_wsi:
-    #    generate_patch(path_wsi, pkl, args)
+    # p = mp.Pool(os.cpu_count())
+    # p.starmap(generate_patch, zip(pathlist_wsi, repeat(pkl), repeat(args)))
+    for path_wsi in pathlist_wsi:
+       generate_patch(path_wsi, pkl, args)
 
 
 def parse_args():
 
     parser = argparse.ArgumentParser(description="Generate Patches from WSI")
-    parser.add_argument("--foldername", default="camelyon16_jpeg_transmil", help="foldername")
+    parser.add_argument("--foldername", default="eeeeeeeeeeeeex", help="foldername")
     parser.add_argument("--dataset", default='camelyon', choices=['camelyon', 'tcga_lung', 'tcga_stad'], help="dataset type")
-    parser.add_argument("--threshold-mask", default = 0.25, type= float, help = 'minimum portion of foreground to keep certain patch')
+    parser.add_argument("--threshold-mask", default = 0.1, type= float, help = 'minimum portion of foreground to keep certain patch')
     args = parser.parse_args()
     return args
 
-# min(level count):
-# Camelyon16: 8, 28.97 mpp --> 30 mpp와 가장 가까운 mpp 레벨에서 마스크 만들기
-# tcga_lung: 2, 1.966 mpp --> 2 mpp와 가장 가까운 mpp 레벨에서 마스크 만들기
-# tcga_stad: 2, 1.975 mpp --> 2 mpp와 가장 가까운 mpp 레벨에서 마스크 만들기.
-#  그런데 그냥 위쪽 레벨로 (마스크 레벨) threshold만 구하고 마스크는 안 구하면 안되나? threshold 있으면 패치상에서도 할 수 있으니.
-# 레벨당 마스크 threshold 바뀌는지 확인 -> openslide 내에서는 별로 안바뀜 (마지막에서 두번째 레벨 쓰자)
 
 if __name__ == "__main__":
     run_start = time.time()
